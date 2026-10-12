@@ -273,6 +273,17 @@
 <text x="418.3" y="970" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#0F8B8D" text-anchor="start">Loki 로그 저장 (IRSA)</text>
 </g>
 <text x="840" y="1013" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#0F8B8D" text-anchor="middle">청록: 관측성 (지표·로그·추적 → Grafana)</text>
+<rect x="1352" y="929" width="52" height="52" rx="6" fill="#E7157B"/>
+<text x="1378" y="960" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">EB</text>
+<text x="1378" y="999" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">EventBridge Scheduler</text>
+<text x="1378" y="1014" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">Asia/Seoul</text>
+<path d="M1352 955 L1254 955" fill="none" stroke="#E7157B" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g>
+<rect x="1312.7" y="1020" width="161.60000000000002" height="20" fill="#fff"/>
+<rect x="1284.7" y="1016" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="1298.7" y="1036" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">14</text>
+<text x="1317.7" y="1035" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#E7157B" text-anchor="start">RDS 중지·시작 · 노드 0↔2</text>
+</g>
 <text x="1530" y="1000" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#545B64" text-anchor="start">실선: 사용자 요청</text>
 <text x="1530" y="1018" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#545B64" text-anchor="start">점선: 메시지 · 배포</text>
 <text x="850" y="1094" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#545B64" text-anchor="middle">FreshLink 아키텍처 구조도</text>

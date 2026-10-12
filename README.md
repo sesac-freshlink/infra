@@ -38,12 +38,25 @@ Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한�
 
 | 묶음 | 리소스 | 주말에 |
 | --- | --- | --- |
-| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets, Loki 로그 버킷 | 그대로 둔다 (RDS는 중지) |
+| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets, Loki 로그 버킷, EventBridge Scheduler | 그대로 둔다 (RDS는 중지) |
 | `cluster/` | EKS, 노드 그룹, NAT, Helm 설치물(ArgoCD, LB Controller, metrics-server) | 금요일에 삭제, 월요일에 생성 |
 
 state 키를 따로 둬서(`persistent/terraform.tfstate`, `cluster/terraform.tfstate`) `cluster`만 지워도 DB 데이터와 이미지는 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
 
-켜고 끄기는 GitHub Actions 예약 작업으로 자동화한다(월 09:20 생성, 월~목 17:30 노드 0대·NAT 삭제, 금 17:30 클러스터 삭제, 매일 23:00 안전 끄기).
+켜고 끄기는 성격에 따라 둘로 나눠 자동화한다. 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-6.
+
+| 시각 (한국) | 작업 | 도구 |
+| --- | --- | --- |
+| 월 09:20 | 클러스터 묶음 생성(노드 2대 포함) + RDS 시작 | GitHub Actions |
+| 화~금 09:30 | NAT 생성 | GitHub Actions |
+| 화~금 09:30 / 09:40 | RDS 시작 / 노드 그룹 desired 2 | EventBridge Scheduler |
+| 월~목 17:30 | 노드 그룹 desired 0 (+ 월~금 RDS 중지) | EventBridge Scheduler |
+| 월~목 17:40 | NAT 삭제 | GitHub Actions |
+| 금 17:30 | 클러스터 묶음 삭제 | GitHub Actions |
+| 매일 23:00 | 안전 끄기: RDS 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / GitHub Actions |
+
+- **EventBridge Scheduler:** API 한 번이면 끝나는 RDS 중지·시작과 노드 0↔2대. Lambda 없이 스케줄러가 API를 직접 부르고, 시간대 `Asia/Seoul`로 정시에 돈다.
+- **GitHub Actions:** Terraform이 필요한 NAT·클러스터 삭제·생성. 월요일은 노드 그룹이 apply 뒤에 생기므로 Actions가 한 번에 처리한다.
 
 ## 3. 폴더 구조
 
@@ -58,6 +71,7 @@ infra/
 │   ├── frontend/    # S3, CloudFront, OAC, Function, ACM
 │   ├── ecr/         # 리포지토리 5개, 보관 개수 정책
 │   ├── observability/ # Loki 로그용 S3 버킷, 14일 수명 주기
+│   ├── scheduler/   # EventBridge Scheduler: RDS 중지·시작, 노드 그룹 0↔2대
 │   └── budget/      # Budgets 알림
 ├── persistent/      # 유지 묶음 루트 모듈
 └── cluster/         # 클러스터 묶음 루트 모듈
@@ -69,6 +83,13 @@ infra/
 - [ ] `modules/irsa`: `freshlink-loki-irsa` (위 버킷 읽기·쓰기만), EBS CSI 드라이버 Role
 - [ ] `cluster`: EBS CSI 드라이버 애드온, `gp3` StorageClass
 - [ ] 만든 버킷 이름·Role ARN을 `gitops/platform/observability/loki.yaml`에 반영
+
+## 할 일: 켜고 끄기 (I-09)
+
+- [ ] `modules/scheduler` (persistent 묶음): `aws_scheduler_schedule` 일정 6개, 시간대 `Asia/Seoul`, universal target `aws-sdk:rds:startDBInstance`·`stopDBInstance`, `aws-sdk:eks:updateNodegroupConfig`
+- [ ] 스케줄러 IAM Role: `freshlink-mysql`과 노드 그룹에 대한 `rds:StartDBInstance`·`rds:StopDBInstance`·`eks:UpdateNodegroupConfig`만
+- [ ] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
+- [ ] GitHub Actions: 월 클러스터 생성, 화~금 NAT 생성, 월~목 NAT 삭제, 금 클러스터 삭제, 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch)
 
 ## 4. 사용법
 

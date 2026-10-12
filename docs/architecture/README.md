@@ -48,7 +48,12 @@ order-service가 토스페이먼츠 결제 승인 API를 호출한다. 프라이
 - **화면:** Grafana 하나에서 지표·로그·추적을 함께 보고, 로그의 traceId를 누르면 Zipkin 추적으로 넘어간다. 외부에 열지 않고 `kubectl port-forward`로 접속한다.
 - **설치:** `gitops/platform/observability`의 ArgoCD Application으로 올린다(namespace `observability`).
 
-## 6. 네트워크 배치
+## 6. 켜고 끄기 (⑭)
+
+- **EventBridge Scheduler(⑭):** 평일 아침 RDS 시작·노드 그룹 2대, 저녁 노드 0대·RDS 중지, 매일 23:00 안전 끄기. Lambda 없이 AWS API를 직접 부르고 시간대는 `Asia/Seoul`.
+- **GitHub Actions:** Terraform이 필요한 NAT 삭제·생성, 금요일 클러스터 삭제, 월요일 클러스터 생성(노드 2대 포함). 일정표는 기획안 6-5.
+
+## 7. 네트워크 배치
 
 - 서울 리전, AZ 2개(2a·2c). AZ마다 **public / app / db** 3계층 서브넷.
 - public: ALB(두 AZ), NAT Gateway(2a에 1개). app: EKS 노드 t3.large 1대씩. db: RDS 기본(2a), 2c는 다중 AZ용 대기 자리.
