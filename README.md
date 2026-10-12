@@ -1,0 +1,116 @@
+# infra
+
+> FreshLink가 올라가는 **AWS 인프라 전체를 Terraform 코드로** 관리한다. VPC부터 EKS, RDS, SQS, CloudFront까지 명령 한 번으로 만들고 지울 수 있다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 담당 | 김진아 |
+| 관련 기능 ID | I-01 인프라 코드화, I-10 메시징 인프라, I-11 프론트엔드 배포, I-09 비용 알림 |
+| 기술 | Terraform, AWS (ap-northeast-2 서울, AZ 2a·2c) |
+| 상태 저장 | S3 `freshlink-tfstate-<계정ID 끝 4자리>` (묶음별 state 키 분리) |
+| 브랜치 | `main` ← `feat/I-xx-설명` (dev 없음). PR에 `terraform plan` 결과를 붙이고, 합친 뒤 `apply` |
+
+---
+
+## 1. 무엇이 만들어지나
+
+```mermaid
+flowchart TB
+    User["사용자"] --> CF["CloudFront"]
+    CF --> S3[("S3 React")]
+    CF --> ALB
+    subgraph VPC["VPC 10.0.0.0/16"]
+        subgraph AZA["ap-northeast-2a"]
+            PA["public-a · ALB · NAT"]
+            AA["app-a · 노드 1 (t3.large)"]
+            DA["db-a · RDS"]
+        end
+        subgraph AZC["ap-northeast-2c"]
+            PC["public-c · ALB"]
+            AC["app-c · 노드 2 (t3.large)"]
+            DC["db-c (대기 자리)"]
+        end
+    end
+    ALB --- PA & PC
+    AA & AC --> DA
+```
+
+| 구분 | 리소스 | 크기 |
+| --- | --- | --- |
+| 컴퓨팅 | EKS `freshlink-eks` + 관리형 노드 그룹 | t3.large × 2 (최대 3) |
+| DB | RDS MySQL 8.0 `freshlink-mysql` | db.t4g.small, gp3 20 GiB, 단일 AZ, 스키마 3개 |
+| 메시징 | SQS `inventory-commands.fifo`, `inventory-results` + DLQ 2개 | 3번 실패 시 DLQ |
+| 네트워크 | 서브넷 6개(퍼블릭·앱·DB × 2 AZ), NAT 1개, S3 Gateway 엔드포인트 | 앱 서브넷 /20 |
+| 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function + ACM(us-east-1) | |
+| 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | |
+| 보안 | IRSA Role (서비스별 SQS 권한), 보안 그룹 alb-sg · node-sg · rds-sg | |
+| 비용 | AWS Budgets 알림 | |
+
+Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한다.
+
+## 2. 두 묶음으로 나눈 이유 (비용 약 400 → 150 USD)
+
+| 묶음 | 리소스 | 주말에 |
+| --- | --- | --- |
+| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets | 그대로 둔다 (RDS는 중지) |
+| `cluster/` | EKS, 노드 그룹, NAT, Helm 설치물(ArgoCD, LB Controller, metrics-server) | 금요일에 삭제, 월요일에 생성 |
+
+state 키를 따로 둬서(`persistent/terraform.tfstate`, `cluster/terraform.tfstate`) `cluster`만 지워도 DB 데이터와 이미지는 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
+
+켜고 끄기는 GitHub Actions 예약 작업으로 자동화한다(월 09:20 생성, 월~목 17:30 노드 0대·NAT 삭제, 금 17:30 클러스터 삭제, 매일 23:00 안전 끄기).
+
+## 3. 폴더 구조
+
+```
+infra/
+├── modules/
+│   ├── network/     # VPC, 서브넷 6개(EKS 태그), IGW, NAT, 라우팅 3종, S3 엔드포인트
+│   ├── eks/         # 클러스터, 노드 그룹, OIDC, 애드온
+│   ├── irsa/        # 서비스별 IAM Role, LB Controller Role
+│   ├── rds/         # MySQL, 서브넷 그룹, rds-sg
+│   ├── messaging/   # SQS 4개, 재시도 정책
+│   ├── frontend/    # S3, CloudFront, OAC, Function, ACM
+│   ├── ecr/         # 리포지토리 5개, 보관 개수 정책
+│   └── budget/      # Budgets 알림
+├── persistent/      # 유지 묶음 루트 모듈
+└── cluster/         # 클러스터 묶음 루트 모듈
+```
+
+## 4. 사용법
+
+> 아직 뼈대만 있는 상태다. 모듈은 1~2주 차에 채운다.
+
+준비물: Terraform, AWS CLI (프로필 설정), kubectl, Helm
+
+```bash
+# 1) 유지 묶음 (처음 한 번)
+cd persistent
+terraform init
+terraform plan
+terraform apply
+
+# 2) 클러스터 묶음 (월요일 아침 / 필요할 때)
+cd ../cluster
+terraform init
+terraform apply
+
+# 3) 금요일 저녁
+terraform destroy   # cluster 디렉터리에서만
+```
+
+`terraform apply` 전에 두 AZ 모두 t3.large를 지원하는지 확인한다.
+
+```bash
+aws ec2 describe-instance-type-offerings --location-type availability-zone \
+  --filters Name=instance-type,Values=t3.large --region ap-northeast-2
+```
+
+## 5. 이름 규칙
+
+AWS 리소스에는 접두사 `freshlink-`를 붙인다. ECR·Helm 릴리스·Deployment 이름은 레포 이름과 똑같이 쓴다(`order-service`). IRSA Role은 `freshlink-<레포>-irsa`.
+
+## 6. 기여
+
+- `main` ← `feat/I-xx-설명` (예: `feat/I-10-sqs-queues`)
+- PR 본문에 `terraform plan` 결과를 붙인다. 합친 뒤 `apply`한다.
+- `.tfstate`, `.tfvars`(비밀값)는 절대 커밋하지 않는다.
