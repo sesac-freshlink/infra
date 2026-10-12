@@ -14,6 +14,8 @@
 
 ## 1. 무엇이 만들어지나
 
+> 전체 구조도와 번호별 흐름 설명: [docs/architecture](docs/architecture/README.md)
+
 ```mermaid
 flowchart TB
     User["사용자"] --> CF["CloudFront"]

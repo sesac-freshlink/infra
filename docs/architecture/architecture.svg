@@ -1,0 +1,263 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1100" viewBox="0 0 1700 1100">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker>
+<marker id="as" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0L0 5L10 10z" fill="context-stroke"/></marker></defs>
+<rect width="100%" height="100%" fill="#fff"/>
+<rect x="190" y="20" width="1330" height="1060" fill="none" stroke="#232F3E" stroke-width="2"/>
+<rect x="190" y="20" width="28" height="28" fill="#232F3E"/>
+<text x="204" y="39" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">aws</text>
+<text x="226" y="39" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#232F3E" text-anchor="start">AWS Cloud</text>
+<rect x="340" y="60" width="1160" height="1000" fill="none" stroke="#147EBA" stroke-width="1.5"/>
+<rect x="340" y="60" width="28" height="28" fill="#147EBA"/>
+<text x="354" y="79" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">⚑</text>
+<text x="376" y="79" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#147EBA" text-anchor="start">Region · 서울 ap-northeast-2</text>
+<rect x="400" y="110" width="850" height="930" fill="none" stroke="#7AA116" stroke-width="2"/>
+<rect x="400" y="110" width="28" height="28" fill="#7AA116"/>
+<text x="414" y="129" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">VPC</text>
+<text x="436" y="129" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#3F8624" text-anchor="start">VPC 10.0.0.0/16</text>
+<rect x="430" y="150" width="800" height="380" fill="none" stroke="#147EBA" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="440" y="169" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#147EBA" text-anchor="start">AZ · ap-northeast-2a</text>
+<rect x="430" y="620" width="800" height="400" fill="none" stroke="#147EBA" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="440" y="639" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#147EBA" text-anchor="start">AZ · ap-northeast-2c</text>
+<rect x="450" y="185" width="170" height="330" fill="#E9F3E6" stroke="none" stroke-width="1.5"/>
+<rect x="450" y="185" width="28" height="28" fill="#7AA116"/>
+<text x="464" y="204" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">P</text>
+<text x="486" y="204" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3F8624" text-anchor="start">public-a /24</text>
+<rect x="650" y="185" width="380" height="330" fill="#E6F2F8" stroke="none" stroke-width="1.5"/>
+<rect x="650" y="185" width="28" height="28" fill="#147EBA"/>
+<text x="664" y="204" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">Pr</text>
+<text x="686" y="204" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#147EBA" text-anchor="start">app-a /20 (private)</text>
+<rect x="1050" y="185" width="180" height="330" fill="#E6F2F8" stroke="none" stroke-width="1.5"/>
+<rect x="1050" y="185" width="28" height="28" fill="#147EBA"/>
+<text x="1064" y="204" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">Pr</text>
+<text x="1086" y="204" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#147EBA" text-anchor="start">db-a /24 (private)</text>
+<rect x="450" y="655" width="170" height="350" fill="#E9F3E6" stroke="none" stroke-width="1.5"/>
+<rect x="450" y="655" width="28" height="28" fill="#7AA116"/>
+<text x="464" y="674" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">P</text>
+<text x="486" y="674" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#3F8624" text-anchor="start">public-c /24</text>
+<rect x="650" y="655" width="380" height="350" fill="#E6F2F8" stroke="none" stroke-width="1.5"/>
+<rect x="650" y="655" width="28" height="28" fill="#147EBA"/>
+<text x="664" y="674" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">Pr</text>
+<text x="686" y="674" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#147EBA" text-anchor="start">app-c /20 (private)</text>
+<rect x="1050" y="655" width="180" height="350" fill="#E6F2F8" stroke="none" stroke-width="1.5"/>
+<rect x="1050" y="655" width="28" height="28" fill="#147EBA"/>
+<text x="1064" y="674" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">Pr</text>
+<text x="1086" y="674" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#147EBA" text-anchor="start">db-c /24 (private)</text>
+<rect x="665" y="225" width="350" height="765" rx="8" fill="none" stroke="#ED7100" stroke-width="2" stroke-dasharray="8 5"/>
+<text x="840" y="568" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#ED7100" text-anchor="middle">EKS Cluster</text>
+<text x="840" y="586" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="400" fill="#ED7100" text-anchor="middle">Managed Node Group · t3.large × 2</text>
+<rect x="680" y="255" width="320" height="245" fill="#fff" stroke="#ED7100" stroke-width="1.5"/>
+<text x="690" y="274" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ED7100" text-anchor="start">EKS 노드 1 · t3.large</text>
+<rect x="695" y="290" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="311" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">gateway #1</text>
+<rect x="695" y="340" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="361" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">inventory #1</text>
+<rect x="695" y="390" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="411" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">order #1</text>
+<rect x="695" y="440" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="461" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">member #1</text>
+<rect x="850" y="290" width="145" height="32" rx="16" fill="#fff" stroke="#EF7B4D" stroke-width="1.6"/>
+<text x="922" y="311" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#EF7B4D" text-anchor="middle">ArgoCD</text>
+<rect x="850" y="340" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="922" y="361" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">CoreDNS #1</text>
+<rect x="680" y="690" width="320" height="285" fill="#fff" stroke="#ED7100" stroke-width="1.5"/>
+<text x="690" y="709" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ED7100" text-anchor="start">EKS 노드 2 · t3.large</text>
+<rect x="695" y="725" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="746" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">gateway #2</text>
+<rect x="695" y="775" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="796" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">inventory #2</text>
+<rect x="695" y="825" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="846" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">order #2</text>
+<rect x="695" y="875" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="767" y="896" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">logistics-simulator</text>
+<rect x="850" y="725" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="922" y="746" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">CoreDNS #2</text>
+<rect x="850" y="775" width="145" height="32" rx="16" fill="#fff" stroke="#ED7100" stroke-width="1.6"/>
+<text x="922" y="796" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">LB Controller</text>
+<rect x="850" y="875" width="145" height="32" rx="16" fill="#fff" stroke="#EF7B4D" stroke-width="1.6"/>
+<text x="922" y="896" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#EF7B4D" text-anchor="middle">ArgoCD</text>
+<g>
+<rect x="706.8999999999999" y="943" width="297.20000000000016" height="20" fill="#fff"/>
+<rect x="678.8999999999999" y="939" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="692.8999999999999" y="959" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">5</text>
+<text x="711.8999999999999" y="958" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">gateway → member·inventory·order (JWT 검증)</text>
+</g>
+<rect x="1268" y="250" width="220" height="640" fill="none" stroke="#E7157B" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="1278" y="269" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#E7157B" text-anchor="start">Amazon SQS</text>
+<rect x="1352" y="304" width="52" height="52" rx="6" fill="#E7157B"/>
+<text x="1378" y="335" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">FIFO</text>
+<text x="1378" y="374" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">inventory-commands.fifo</text>
+<text x="1378" y="389" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">그룹 = 점포(storeId)</text>
+<rect x="1352" y="504" width="52" height="52" rx="6" fill="#E7157B"/>
+<text x="1378" y="535" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">SQS</text>
+<text x="1378" y="574" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">inventory-results</text>
+<text x="1378" y="589" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">(표준 큐)</text>
+<rect x="1307" y="744" width="52" height="52" rx="6" fill="#E7157B"/>
+<text x="1333" y="775" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">DLQ</text>
+<text x="1333" y="814" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">commands</text>
+<text x="1333" y="829" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">-dlq</text>
+<rect x="1397" y="744" width="52" height="52" rx="6" fill="#E7157B"/>
+<text x="1423" y="775" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">DLQ</text>
+<text x="1423" y="814" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">results</text>
+<text x="1423" y="829" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">-dlq</text>
+<path d="M1352 330 L1290 330 L1290 770 L1307 770" fill="none" stroke="#E7157B" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<path d="M1404 530 L1472 530 L1472 770 L1449 770" fill="none" stroke="#E7157B" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<text x="1378" y="862" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#E7157B" text-anchor="middle">3회 실패 시 자동 이동</text>
+<rect x="54" y="184" width="52" height="52" rx="6" fill="#545B64"/>
+<text x="80" y="215" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">USER</text>
+<text x="80" y="254" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">사용자</text>
+<text x="80" y="269" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">점주 포스기 · 고객 폰</text>
+<rect x="236" y="184" width="52" height="52" rx="6" fill="#8C4FFF"/>
+<text x="262" y="215" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">CF</text>
+<text x="262" y="254" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">CloudFront</text>
+<text x="262" y="269" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">+ ACM (HTTPS)</text>
+<rect x="236" y="384" width="52" height="52" rx="6" fill="#7AA116"/>
+<text x="262" y="415" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">S3</text>
+<text x="262" y="454" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">S3 (비공개)</text>
+<text x="262" y="469" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">React 빌드 파일</text>
+<rect x="236" y="674" width="52" height="52" rx="6" fill="#ED7100"/>
+<text x="262" y="705" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">ECR</text>
+<text x="262" y="744" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">ECR</text>
+<text x="262" y="759" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">리포지토리 5개</text>
+<rect x="236" y="874" width="52" height="52" rx="6" fill="#DD344C"/>
+<text x="262" y="905" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">IAM</text>
+<text x="262" y="944" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">IAM</text>
+<text x="262" y="959" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">GitHub OIDC · IRSA</text>
+<rect x="374" y="549" width="52" height="52" rx="6" fill="#8C4FFF"/>
+<text x="400" y="580" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">IGW</text>
+<text x="400" y="618" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle" paint-order="stroke" stroke="#fff" stroke-width="5" stroke-linejoin="round">IGW</text>
+<rect x="514" y="549" width="52" height="52" rx="6" fill="#8C4FFF"/>
+<text x="540" y="580" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">ALB</text>
+<text x="596" y="548" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle" paint-order="stroke" stroke="#fff" stroke-width="5" stroke-linejoin="round">ALB</text>
+<text x="535" y="280" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#3F8624" text-anchor="middle">ALB 노드 (2a)</text>
+<text x="535" y="750" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#3F8624" text-anchor="middle">ALB 노드 (2c)</text>
+<rect x="509" y="394" width="52" height="52" rx="6" fill="#8C4FFF"/>
+<text x="535" y="425" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">NAT</text>
+<text x="535" y="464" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">NAT Gateway</text>
+<rect x="1114" y="304" width="52" height="52" rx="6" fill="#3B48CC"/>
+<text x="1140" y="335" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">RDS</text>
+<text x="1140" y="374" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">RDS MySQL</text>
+<text x="1140" y="389" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">db.t4g.small (기본)</text>
+<rect x="1114" y="774" width="52" height="52" rx="6" stroke="#3B48CC" stroke-width="2" stroke-dasharray="5 4" fill="#fff"/>
+<text x="1140" y="805" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#3B48CC" text-anchor="middle">RDS</text>
+<text x="1140" y="844" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">대기 인스턴스</text>
+<text x="1140" y="859" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">(다중 AZ 시)</text>
+<rect x="1584" y="274" width="52" height="52" rx="6" fill="#0064FF"/>
+<text x="1610" y="305" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">toss</text>
+<text x="1610" y="344" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">토스페이먼츠</text>
+<text x="1610" y="359" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">(테스트 결제)</text>
+<rect x="12" y="600" width="165" height="420" fill="none" stroke="#24292F" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="22" y="619" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#24292F" text-anchor="start">GitHub</text>
+<rect x="69" y="639" width="52" height="52" rx="6" fill="#24292F"/>
+<text x="95" y="670" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">REPO</text>
+<text x="95" y="709" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">앱 레포 5개</text>
+<rect x="69" y="769" width="52" height="52" rx="6" fill="#24292F"/>
+<text x="95" y="800" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">CI</text>
+<text x="95" y="839" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">GitHub Actions</text>
+<rect x="69" y="909" width="52" height="52" rx="6" fill="#24292F"/>
+<text x="95" y="940" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">GitOps</text>
+<text x="95" y="979" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#232F3E" text-anchor="middle">gitops 레포</text>
+<path d="M106 210 L236 210" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<g>
+<rect x="165.5" y="185" width="42" height="20" fill="#fff"/>
+<rect x="137.5" y="181" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="151.5" y="201" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+<text x="170.5" y="200" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">HTTPS</text>
+</g>
+<path d="M262 236 L262 384" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<g>
+<rect x="234.3" y="303" width="86.39999999999999" height="20" fill="#fff"/>
+<rect x="206.3" y="299" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="220.3" y="319" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">2</text>
+<text x="239.3" y="318" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">/ 화면 (OAC)</text>
+</g>
+<path d="M288 200 L328 200 L328 575 L374 575" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<g>
+<rect x="319.1" y="510" width="48.8" height="20" fill="#fff"/>
+<rect x="291.1" y="506" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="305.1" y="526" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">3</text>
+<text x="324.1" y="525" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">/api/*</text>
+</g>
+<path d="M426 575 L514 575" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M566 565 L635 565 L635 306 L695 306" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<g transform="rotate(-90 635 470)">
+<rect x="615.9" y="455" width="69.19999999999999" height="20" fill="#fff"/>
+</g>
+<rect x="616" y="489.1" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="630" y="509.1" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">4</text>
+<g transform="rotate(-90 635 470)">
+<text x="620.9" y="470" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">target ip</text>
+</g>
+<path d="M566 585 L635 585 L635 741 L695 741" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M1000 318 L1112 318" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)" marker-start="url(#as)"/>
+<g>
+<rect x="1057.9" y="295" width="35.2" height="20" fill="#fff"/>
+<rect x="1029.9" y="291" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="1043.9" y="311" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">6</text>
+<text x="1062.9" y="310" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">JDBC</text>
+</g>
+<path d="M1000 835 L1040 835 L1040 345 L1112 345" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)" marker-start="url(#as)"/>
+<path d="M1140 398 L1140 772" fill="none" stroke="#3B48CC" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<text x="1180" y="700" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11.5" font-weight="400" fill="#232F3E" text-anchor="middle" paint-order="stroke" stroke="#fff" stroke-width="5" stroke-linejoin="round">복제(선택)</text>
+<path d="M1015 600 L1266 600" fill="none" stroke="#E7157B" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)" marker-start="url(#as)"/>
+<g>
+<rect x="1148.3" y="577" width="110.39999999999998" height="20" fill="#fff"/>
+<rect x="1120.3" y="573" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="1134.3" y="593" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">7</text>
+<text x="1153.3" y="592" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#E7157B" text-anchor="start">큐 송수신 (IRSA)</text>
+</g>
+<path d="M680 432 L561 432" fill="none" stroke="#232F3E" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g>
+<rect x="584" y="439" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="598" y="459" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">8</text>
+</g>
+<path d="M561 408 L600 408 L600 130 L1610 130 L1610 272" fill="none" stroke="#0064FF" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g>
+<rect x="952.5" y="109" width="226.0000000000001" height="20" fill="#fff"/>
+<rect x="924.5" y="105" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="938.5" y="125" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">8</text>
+<text x="957.5" y="124" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#0064FF" text-anchor="start">결제 승인 API (order → NAT → IGW)</text>
+</g>
+<path d="M95 691 L95 767" fill="none" stroke="#232F3E" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M121 805 L205 805 L205 700 L236 700" fill="none" stroke="#232F3E" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g transform="rotate(-90 205 760)">
+<rect x="179.10000000000002" y="745" width="82.79999999999998" height="20" fill="#fff"/>
+</g>
+<rect x="186" y="785.9" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="200" y="805.9" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">9</text>
+<g transform="rotate(-90 205 760)">
+<text x="184.10000000000002" y="760" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">OIDC · push</text>
+</g>
+<path d="M95 821 L95 907" fill="none" stroke="#232F3E" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g>
+<rect x="79.1" y="857" width="62.8" height="20" fill="#fff"/>
+<rect x="51.099999999999994" y="853" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="65.1" y="873" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">10</text>
+<text x="84.1" y="872" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#232F3E" text-anchor="start">태그 커밋</text>
+</g>
+<path d="M121 945 L150 945 L150 1050 L920 1050 L920 902" fill="none" stroke="#EF7B4D" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g>
+<rect x="412.29999999999995" y="1039" width="246.40000000000015" height="20" fill="#fff"/>
+<rect x="384.29999999999995" y="1035" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="398.29999999999995" y="1055" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">11</text>
+<text x="417.29999999999995" y="1054" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#C2410C" text-anchor="start">ArgoCD가 gitops 레포를 pull (GitOps)</text>
+</g>
+<path d="M288 700 L665 700" fill="none" stroke="#ED7100" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g>
+<rect x="321.5" y="677" width="77.99999999999999" height="20" fill="#fff"/>
+<rect x="293.5" y="673" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="307.5" y="693" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">11</text>
+<text x="326.5" y="692" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#ED7100" text-anchor="start">이미지 pull</text>
+</g>
+<path d="M121 785 L182 785 L182 420 L236 420" fill="none" stroke="#7AA116" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<g transform="rotate(-90 182 600)">
+<rect x="121.70000000000002" y="585" width="151.59999999999997" height="20" fill="#fff"/>
+</g>
+<rect x="163" y="660.3" width="28" height="28" rx="6" fill="#E5243B" stroke="#fff" stroke-width="2"/>
+<text x="177" y="680.3" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">12</text>
+<g transform="rotate(-90 182 600)">
+<text x="126.70000000000002" y="600" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#3F8624" text-anchor="start">프론트 배포 · CF 무효화</text>
+</g>
+<text x="1530" y="1000" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#545B64" text-anchor="start">실선: 사용자 요청</text>
+<text x="1530" y="1018" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="11" font-weight="400" fill="#545B64" text-anchor="start">점선: 메시지 · 배포</text>
+<text x="850" y="1094" font-family="Malgun Gothic, 'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#545B64" text-anchor="middle">FreshLink 아키텍처 구조도</text>
+</svg>
