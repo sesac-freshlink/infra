@@ -14,28 +14,9 @@
 
 ## 1. 무엇이 만들어지나
 
-> 전체 구조도와 번호별 흐름 설명: [docs/architecture](docs/architecture/README.md)
+![FreshLink 아키텍처 구조도](docs/architecture/architecture.png)
 
-```mermaid
-flowchart TB
-    User["사용자"] --> CF["CloudFront"]
-    CF --> S3[("S3 React")]
-    CF --> ALB
-    subgraph VPC["VPC 10.0.0.0/16"]
-        subgraph AZA["ap-northeast-2a"]
-            PA["public-a · ALB · NAT"]
-            AA["app-a · 노드 1 (t3.large)"]
-            DA["db-a · RDS"]
-        end
-        subgraph AZC["ap-northeast-2c"]
-            PC["public-c · ALB"]
-            AC["app-c · 노드 2 (t3.large)"]
-            DC["db-c (대기 자리)"]
-        end
-    end
-    ALB --- PA & PC
-    AA & AC --> DA
-```
+> 번호별 흐름 설명: [docs/architecture](docs/architecture/README.md)
 
 | 구분 | 리소스 | 크기 |
 | --- | --- | --- |
@@ -45,8 +26,11 @@ flowchart TB
 | 네트워크 | 서브넷 6개(퍼블릭·앱·DB × 2 AZ), NAT 1개, S3 Gateway 엔드포인트 | 앱 서브넷 /20 |
 | 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function + ACM(us-east-1) | |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | |
-| 보안 | IRSA Role (서비스별 SQS 권한), 보안 그룹 alb-sg · node-sg · rds-sg | |
+| 보안 | IRSA Role (서비스별 SQS 권한, Loki 로그 버킷), 보안 그룹 alb-sg · node-sg · rds-sg | |
+| 관측성 | S3 Loki 로그 버킷(14일 수명 주기), Loki IRSA Role, EBS CSI 드라이버(Prometheus 볼륨) | 스택 자체는 [gitops/platform/observability](https://github.com/sesac-freshlink/gitops/tree/main/platform/observability)에서 ArgoCD가 설치 |
 | 비용 | AWS Budgets 알림 | |
+
+관측성은 Prometheus(지표) + Loki·Alloy(로그) + Zipkin(추적) + Grafana(화면)다. Terraform은 **Loki가 쓸 S3 버킷과 IAM Role, Prometheus 볼륨용 EBS CSI 드라이버까지만** 만들고, 스택 설치는 ArgoCD가 한다. 선택 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-5.
 
 Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한다.
 
@@ -54,7 +38,7 @@ Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한�
 
 | 묶음 | 리소스 | 주말에 |
 | --- | --- | --- |
-| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets | 그대로 둔다 (RDS는 중지) |
+| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets, Loki 로그 버킷 | 그대로 둔다 (RDS는 중지) |
 | `cluster/` | EKS, 노드 그룹, NAT, Helm 설치물(ArgoCD, LB Controller, metrics-server) | 금요일에 삭제, 월요일에 생성 |
 
 state 키를 따로 둬서(`persistent/terraform.tfstate`, `cluster/terraform.tfstate`) `cluster`만 지워도 DB 데이터와 이미지는 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
@@ -73,10 +57,18 @@ infra/
 │   ├── messaging/   # SQS 4개, 재시도 정책
 │   ├── frontend/    # S3, CloudFront, OAC, Function, ACM
 │   ├── ecr/         # 리포지토리 5개, 보관 개수 정책
+│   ├── observability/ # Loki 로그용 S3 버킷, 14일 수명 주기
 │   └── budget/      # Budgets 알림
 ├── persistent/      # 유지 묶음 루트 모듈
 └── cluster/         # 클러스터 묶음 루트 모듈
 ```
+
+## 할 일: 관측성 (I-03)
+
+- [ ] `modules/observability`: Loki 로그 버킷 `freshlink-loki-logs-<계정ID 끝 4자리>`, 수명 주기 14일, 퍼블릭 차단 (persistent 묶음)
+- [ ] `modules/irsa`: `freshlink-loki-irsa` (위 버킷 읽기·쓰기만), EBS CSI 드라이버 Role
+- [ ] `cluster`: EBS CSI 드라이버 애드온, `gp3` StorageClass
+- [ ] 만든 버킷 이름·Role ARN을 `gitops/platform/observability/loki.yaml`에 반영
 
 ## 4. 사용법
 

@@ -40,7 +40,15 @@ order-service가 토스페이먼츠 결제 승인 API를 호출한다. 프라이
 | ⑪ | ArgoCD ← `gitops`, 노드 ← ECR | 클러스터 안의 ArgoCD가 `gitops`를 끌어와(pull) 상태를 맞추고, 노드가 ECR에서 이미지를 받는다 |
 | ⑫ | GitHub Actions → S3 · CloudFront | 프론트는 `npm run build` → S3 업로드 → CloudFront 캐시 무효화 |
 
-## 5. 네트워크 배치
+## 5. 관측성 (⑬, 청록색 파드)
+
+- **지표:** 서비스 5종이 Actuator·Micrometer로 `/actuator/prometheus`를 내보내고 Prometheus가 수집한다 (EBS gp3 10 GiB, 3일 보관).
+- **로그:** 노드마다 뜬 Grafana Alloy(데몬셋)가 파드 로그를 읽어 Loki로 보낸다. Loki는 로그를 **S3에 14일** 저장해서 주말 클러스터 삭제 뒤에도 남는다(⑬, IRSA로 버킷 권한).
+- **추적:** Micrometer Tracing이 Zipkin으로 보낸다. 주문 한 건이 gateway → order → SQS → inventory를 지나간 경로를 traceId 하나로 본다.
+- **화면:** Grafana 하나에서 지표·로그·추적을 함께 보고, 로그의 traceId를 누르면 Zipkin 추적으로 넘어간다. 외부에 열지 않고 `kubectl port-forward`로 접속한다.
+- **설치:** `gitops/platform/observability`의 ArgoCD Application으로 올린다(namespace `observability`).
+
+## 6. 네트워크 배치
 
 - 서울 리전, AZ 2개(2a·2c). AZ마다 **public / app / db** 3계층 서브넷.
 - public: ALB(두 AZ), NAT Gateway(2a에 1개). app: EKS 노드 t3.large 1대씩. db: RDS 기본(2a), 2c는 다중 AZ용 대기 자리.
