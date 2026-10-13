@@ -16,7 +16,7 @@
 | ② | CloudFront → S3 | `/` 화면 요청은 비공개 S3의 React 빌드 파일을 OAC로 읽어 준다 |
 | ③ | CloudFront → IGW → ALB | `/api/*` 요청만 EKS로 넘긴다. 화면과 API가 같은 주소라 CORS가 필요 없다 |
 | ④ | ALB → gateway 파드 | 대상 유형 `ip`로 노드를 거치지 않고 두 AZ의 gateway 파드로 바로 보낸다 |
-| ⑤ | gateway → member · inventory · order | JWT를 검증하고 `/api/owner/**`는 OWNER만 통과시킨 뒤 경로별로 서비스에 나눠 보낸다 |
+| ⑤ | gateway → member · inventory · order | Cognito가 발급한 JWT를 Cognito 공개 키(JWKS)로 검증하고, `/api/owner/**`는 `cognito:groups`에 OWNER가 있어야 통과시킨 뒤 경로별로 서비스에 나눠 보낸다 |
 | ⑥ | 서비스 ↔ RDS MySQL | 인스턴스 1대에 서비스별 스키마·DB 사용자를 나눴다. DB 서브넷엔 인터넷 경로가 없다 |
 
 ## 2. 재고 처리 (⑦)
@@ -53,7 +53,13 @@ order-service가 토스페이먼츠 결제 승인 API를 호출한다. 프라이
 - **EventBridge Scheduler(⑭):** 평일 아침 RDS 시작·노드 그룹 2대, 저녁 노드 0대·RDS 중지, 매일 23:00 안전 끄기. Lambda 없이 AWS API를 직접 부르고 시간대는 `Asia/Seoul`.
 - **GitHub Actions:** Terraform이 필요한 NAT 삭제·생성, 금요일 클러스터 삭제, 월요일 클러스터 생성(노드 2대 포함). 일정표는 기획안 6-5.
 
-## 7. 네트워크 배치
+## 7. 가입·로그인 (⑮)
+
+- **Amazon Cognito User Pool:** 화면이 Amplify Auth로 Cognito에 바로 가입·로그인하고, Cognito가 RS256으로 서명한 토큰(그룹 OWNER/CUSTOMER, 점주는 `storeId`)을 받는다. gateway를 거치지 않는다.
+- **검증:** gateway는 공유 비밀 키 없이 Cognito 공개 키(JWKS)로 토큰을 확인한다. 공개 키는 NAT를 거쳐 한 번 받아 캐시한다.
+- **위치:** AWS 관리형이라 VPC·클러스터 밖에 있고, Terraform 유지 묶음이라 주말 클러스터 삭제 뒤에도 회원 계정이 남는다. Keycloak 대신 고른 이유는 `기술스택과 선택이유.md` 3-7.
+
+## 8. 네트워크 배치
 
 - 서울 리전, AZ 2개(2a·2c). AZ마다 **public / app / db** 3계층 서브넷.
 - public: ALB(두 AZ), NAT Gateway(2a에 1개). app: EKS 노드 t3.large 1대씩. db: RDS 기본(2a), 2c는 다중 AZ용 대기 자리.

@@ -26,11 +26,14 @@
 | 네트워크 | 서브넷 6개(퍼블릭·앱·DB × 2 AZ), NAT 1개, S3 Gateway 엔드포인트 | 앱 서브넷 /20 |
 | 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function + ACM(us-east-1) | |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | |
-| 보안 | IRSA Role (서비스별 SQS 권한, Loki 로그 버킷), 보안 그룹 alb-sg · node-sg · rds-sg | |
+| 보안 | IRSA Role (서비스별 SQS 권한, member-service의 User Pool 속성 변경, Loki 로그 버킷), 보안 그룹 alb-sg · node-sg · rds-sg | |
+| 인증 | Cognito User Pool `freshlink-users`(그룹 OWNER·CUSTOMER, 앱 클라이언트 1개) + 트리거 Lambda 1개 | Essentials, 월간 활성 사용자 1만 명까지 무료 |
 | 관측성 | S3 Loki 로그 버킷(14일 수명 주기), Loki IRSA Role, EBS CSI 드라이버(Prometheus 볼륨) | 스택 자체는 [gitops/platform/observability](https://github.com/sesac-freshlink/gitops/tree/main/platform/observability)에서 ArgoCD가 설치 |
 | 비용 | AWS Budgets 알림 | |
 
 관측성은 Prometheus(지표) + Loki·Alloy(로그) + Zipkin(추적) + Grafana(화면)다. Terraform은 **Loki가 쓸 S3 버킷과 IAM Role, Prometheus 볼륨용 EBS CSI 드라이버까지만** 만들고, 스택 설치는 ArgoCD가 한다. 선택 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-5.
+
+로그인은 Amazon Cognito가 맡는다. 토큰을 Cognito가 RS256으로 서명하고 gateway는 공개 키(JWKS)로 검증하므로 공유할 서명 키가 없다. Keycloak을 EKS에 직접 띄우는 안과 비교한 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-7.
 
 Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한다.
 
@@ -38,7 +41,7 @@ Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한�
 
 | 묶음 | 리소스 | 주말에 |
 | --- | --- | --- |
-| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets, Loki 로그 버킷, EventBridge Scheduler | 그대로 둔다 (RDS는 중지) |
+| `persistent/` | VPC·서브넷, RDS, ECR, S3·CloudFront, SQS, IAM, Budgets, Loki 로그 버킷, EventBridge Scheduler, Cognito User Pool | 그대로 둔다 (RDS는 중지) |
 | `cluster/` | EKS, 노드 그룹, NAT, Helm 설치물(ArgoCD, LB Controller, metrics-server) | 금요일에 삭제, 월요일에 생성 |
 
 state 키를 따로 둬서(`persistent/terraform.tfstate`, `cluster/terraform.tfstate`) `cluster`만 지워도 DB 데이터와 이미지는 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
@@ -72,6 +75,7 @@ infra/
 │   ├── ecr/         # 리포지토리 5개, 보관 개수 정책
 │   ├── observability/ # Loki 로그용 S3 버킷, 14일 수명 주기
 │   ├── scheduler/   # EventBridge Scheduler: RDS 중지·시작, 노드 그룹 0↔2대
+│   ├── cognito/     # User Pool, 그룹 OWNER·CUSTOMER, 앱 클라이언트, 트리거 Lambda
 │   └── budget/      # Budgets 알림
 ├── persistent/      # 유지 묶음 루트 모듈
 └── cluster/         # 클러스터 묶음 루트 모듈
@@ -90,6 +94,16 @@ infra/
 - [ ] 스케줄러 IAM Role: `freshlink-mysql`과 노드 그룹에 대한 `rds:StartDBInstance`·`rds:StopDBInstance`·`eks:UpdateNodegroupConfig`만
 - [ ] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
 - [ ] GitHub Actions: 월 클러스터 생성, 화~금 NAT 생성, 월~목 NAT 삭제, 금 클러스터 삭제, 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch)
+
+## 할 일: 인증 (Cognito, C-01·C-02·C-03)
+
+- [ ] `modules/cognito` (persistent 묶음): `aws_cognito_user_pool` `freshlink-users` (이메일을 아이디로, 이메일 인증, `user_pool_tier = "ESSENTIALS"`), 사용자 속성 `custom:role`·`custom:storeId`
+- [ ] `aws_cognito_user_group` `OWNER`, `CUSTOMER`
+- [ ] `aws_cognito_user_pool_client` 브라우저용 1개: 시크릿 없음, `ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, 액세스 토큰 1시간·리프레시 1일, `custom:storeId`는 쓰기 속성에서 뺀다
+- [ ] 트리거 Lambda 1개 (Python): Post Confirmation → `custom:role`대로 그룹 배정, Pre Token Generation V2 → 액세스 토큰에 `storeId` 클레임 추가. 실행 Role은 `cognito-idp:AdminAddUserToGroup`만
+- [ ] `modules/irsa`: member-service Role에 이 User Pool의 `cognito-idp:AdminUpdateUserAttributes`만 추가
+- [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수에 반영
+- [ ] 더미 점주 3명 시드 스크립트 (`admin-create-user` + 그룹 + `custom:storeId`, E-12)
 
 ## 4. 사용법
 
