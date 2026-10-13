@@ -55,7 +55,7 @@ order-service가 토스페이먼츠 결제 승인 API를 호출한다. 프라이
 
 ## 7. 가입·로그인 (⑮)
 
-- **Amazon Cognito User Pool:** 화면이 Amplify Auth로 Cognito에 바로 가입·로그인하고, Cognito가 RS256으로 서명한 토큰(그룹 OWNER/CUSTOMER, 점주는 `storeId`)을 받는다. gateway를 거치지 않는다.
+- **Amazon Cognito User Pool:** 화면이 Amplify Auth로 Cognito에 바로 가입·로그인하고, Cognito가 RS256으로 서명한 ID 토큰(그룹 OWNER/CUSTOMER, 점주는 `custom:storeId`)을 받아 API 요청에 붙인다. gateway를 거치지 않는다.
 - **검증:** gateway는 공유 비밀 키 없이 Cognito 공개 키(JWKS)로 토큰을 확인한다. 공개 키는 NAT를 거쳐 한 번 받아 캐시한다.
 - **위치:** AWS 관리형이라 VPC·클러스터 밖에 있고, Terraform 유지 묶음이라 주말 클러스터 삭제 뒤에도 회원 계정이 남는다. Keycloak 대신 고른 이유는 `기술스택과 선택이유.md` 3-7.
 

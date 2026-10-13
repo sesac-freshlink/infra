@@ -27,7 +27,7 @@
 | 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function + ACM(us-east-1) | |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | |
 | 보안 | IRSA Role (서비스별 SQS 권한, member-service의 User Pool 속성 변경, Loki 로그 버킷), 보안 그룹 alb-sg · node-sg · rds-sg | |
-| 인증 | Cognito User Pool `freshlink-users`(그룹 OWNER·CUSTOMER, 앱 클라이언트 1개) + 트리거 Lambda 1개 | Essentials, 월간 활성 사용자 1만 명까지 무료 |
+| 인증 | Cognito User Pool `freshlink-users`(그룹 OWNER·CUSTOMER, 앱 클라이언트 1개) + 가입 확인 트리거 Lambda 1개 | 월간 활성 사용자 1만 명까지 무료 |
 | 관측성 | S3 Loki 로그 버킷(14일 수명 주기), Loki IRSA Role, EBS CSI 드라이버(Prometheus 볼륨) | 스택 자체는 [gitops/platform/observability](https://github.com/sesac-freshlink/gitops/tree/main/platform/observability)에서 ArgoCD가 설치 |
 | 비용 | AWS Budgets 알림 | |
 
@@ -97,12 +97,12 @@ infra/
 
 ## 할 일: 인증 (Cognito, C-01·C-02·C-03)
 
-- [ ] `modules/cognito` (persistent 묶음): `aws_cognito_user_pool` `freshlink-users` (이메일을 아이디로, 이메일 인증, `user_pool_tier = "ESSENTIALS"`), 사용자 속성 `custom:role`·`custom:storeId`
+- [ ] `modules/cognito` (persistent 묶음): `aws_cognito_user_pool` `freshlink-users` (이메일을 아이디로, 이메일 인증), 사용자 속성 `custom:storeId`
 - [ ] `aws_cognito_user_group` `OWNER`, `CUSTOMER`
-- [ ] `aws_cognito_user_pool_client` 브라우저용 1개: 시크릿 없음, `ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, 액세스 토큰 1시간·리프레시 1일, `custom:storeId`는 쓰기 속성에서 뺀다
-- [ ] 트리거 Lambda 1개 (Python): Post Confirmation → `custom:role`대로 그룹 배정, Pre Token Generation V2 → 액세스 토큰에 `storeId` 클레임 추가. 실행 Role은 `cognito-idp:AdminAddUserToGroup`만
+- [ ] `aws_cognito_user_pool_client` 브라우저용 1개: 시크릿 없음, `ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, ID·액세스 토큰 1시간·리프레시 1일, `custom:storeId`는 읽기 속성에만 넣고 쓰기 속성에서 뺀다 (프론트는 ID 토큰을 API에 보낸다)
+- [ ] 가입 확인 트리거 Lambda (Python, Post Confirmation): `confirmSignUp`의 `clientMetadata.role`이 OWNER/CUSTOMER면 그 그룹, 아니면 CUSTOMER에 넣는다. 실행 Role은 `cognito-idp:AdminAddUserToGroup`만
 - [ ] `modules/irsa`: member-service Role에 이 User Pool의 `cognito-idp:AdminUpdateUserAttributes`만 추가
-- [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수에 반영
+- [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 반영
 - [ ] 더미 점주 3명 시드 스크립트 (`admin-create-user` + 그룹 + `custom:storeId`, E-12)
 
 ## 4. 사용법
