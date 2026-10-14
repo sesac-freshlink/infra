@@ -37,7 +37,7 @@
 
 Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한다.
 
-## 2. 두 묶음으로 나눈 이유 (비용 약 400 → 150 USD)
+## 2. 두 묶음으로 나눈 이유 (비용 약 400 → 195 USD)
 
 | 묶음 | 리소스 | 주말에 |
 | --- | --- | --- |
@@ -50,12 +50,12 @@ state 키를 따로 둬서(`persistent/terraform.tfstate`, `cluster/terraform.tf
 
 | 시각 (한국) | 작업 | 도구 |
 | --- | --- | --- |
-| 월 09:20 | 클러스터 묶음 생성(노드 2대 포함) + RDS 시작 | GitHub Actions |
-| 화~금 09:30 | NAT 생성 | GitHub Actions |
-| 화~금 09:30 / 09:40 | RDS 시작 / 노드 그룹 desired 2 | EventBridge Scheduler |
-| 월~목 17:30 | 노드 그룹 desired 0 (+ 월~금 RDS 중지) | EventBridge Scheduler |
-| 월~목 17:40 | NAT 삭제 | GitHub Actions |
-| 금 17:30 | 클러스터 묶음 삭제 | GitHub Actions |
+| 월 08:40 | 클러스터 묶음 생성(노드 2대 포함) + RDS 시작 | GitHub Actions |
+| 화~금 09:00 | NAT 생성 | GitHub Actions |
+| 화~금 09:00 / 09:10 | RDS 시작 / 노드 그룹 desired 2 | EventBridge Scheduler |
+| 월~목 21:00 | 노드 그룹 desired 0 (+ 월~금 RDS 중지) | EventBridge Scheduler |
+| 월~목 21:10 | NAT 삭제 | GitHub Actions |
+| 금 21:00 | 클러스터 묶음 삭제 | GitHub Actions |
 | 매일 23:00 | 안전 끄기: RDS 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / GitHub Actions |
 
 - **EventBridge Scheduler:** API 한 번이면 끝나는 RDS 중지·시작과 노드 0↔2대. Lambda 없이 스케줄러가 API를 직접 부르고, 시간대 `Asia/Seoul`로 정시에 돈다.
