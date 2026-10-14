@@ -14,9 +14,9 @@
 
 ## 1. 무엇이 만들어지나
 
-![FreshLink 아키텍처 구조도](docs/architecture/architecture.png)
+![FreshLink 아키텍처 구조도](https://raw.githubusercontent.com/sesac-freshlink/.github/main/docs/architecture/architecture.png)
 
-> 번호별 흐름 설명: [docs/architecture](docs/architecture/README.md)
+> 번호별 흐름 설명: [.github 레포 docs/architecture](https://github.com/sesac-freshlink/.github/blob/main/docs/architecture/README.md)
 
 | 구분 | 리소스 | 크기 |
 | --- | --- | --- |
@@ -31,9 +31,9 @@
 | 관측성 | S3 Loki 로그 버킷(14일 수명 주기), Loki IRSA Role, EBS CSI 드라이버(Prometheus 볼륨) | 스택 자체는 [gitops/platform/observability](https://github.com/sesac-freshlink/gitops/tree/main/platform/observability)에서 ArgoCD가 설치 |
 | 비용 | AWS Budgets 알림 | |
 
-관측성은 Prometheus(지표) + Loki·Alloy(로그) + Zipkin(추적) + Grafana(화면)다. Terraform은 **Loki가 쓸 S3 버킷과 IAM Role, Prometheus 볼륨용 EBS CSI 드라이버까지만** 만들고, 스택 설치는 ArgoCD가 한다. 선택 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-5.
+관측성은 Prometheus(지표) + Loki·Alloy(로그) + Zipkin(추적) + Grafana(화면)다. Terraform은 **Loki가 쓸 S3 버킷과 IAM Role, Prometheus 볼륨용 EBS CSI 드라이버까지만** 만들고, 스택 설치는 ArgoCD가 한다. 선택 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-5.
 
-로그인은 Amazon Cognito가 맡는다. 토큰을 Cognito가 RS256으로 서명하고 gateway는 공개 키(JWKS)로 검증하므로 공유할 서명 키가 없다. Keycloak을 EKS에 직접 띄우는 안과 비교한 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-7.
+로그인은 Amazon Cognito가 맡는다. 토큰을 Cognito가 RS256으로 서명하고 gateway는 공개 키(JWKS)로 검증하므로 공유할 서명 키가 없다. Keycloak을 EKS에 직접 띄우는 안과 비교한 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-7.
 
 Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한다.
 
@@ -46,7 +46,7 @@ Bastion 서버는 두지 않는다. 노드는 SSM Session Manager로 접속한�
 
 state 키를 따로 둬서(`persistent/terraform.tfstate`, `cluster/terraform.tfstate`) `cluster`만 지워도 DB 데이터와 이미지는 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
 
-켜고 끄기는 성격에 따라 둘로 나눠 자동화한다. 이유는 [docs/기술스택과 선택이유.md](docs/기술스택과%20선택이유.md) 3-6.
+켜고 끄기는 성격에 따라 둘로 나눠 자동화한다. 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 
 | 시각 (한국) | 작업 | 도구 |
 | --- | --- | --- |

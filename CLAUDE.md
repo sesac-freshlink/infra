@@ -9,8 +9,9 @@
 | 문서 | 내용 |
 |------|------|
 | `README.md` | 리소스 표(1장), 두 묶음과 켜고 끄기 스케줄(2장), 폴더 구조(3장), 할 일 체크리스트, 사용법(4장), 이름 규칙(5장) |
-| `docs/기술스택과 선택이유.md` | 도구별 선택 이유 (관측성 3-5, 켜고 끄기 3-6, Cognito 3-7) |
-| `docs/architecture/` | 구조도와 번호별 흐름 |
+| `.github` 레포 `docs/기술스택과 선택이유.md` | 도구별 선택 이유 (관측성 3-5, 켜고 끄기 3-6, Cognito 3-7) |
+| `.github` 레포 `docs/architecture/` | 구조도와 번호별 흐름 |
+| `docs/troubleshooting/` | 장애·오류 해결 기록. 작성법은 `docs/troubleshooting/README.md` |
 | `.github` 레포 `CONTRIBUTING.md` | 브랜치·커밋·PR 규칙 |
 | `.github` 레포 `docs/ai-agents.md` | 인프라 에이전트 플러그인(`freshlink-infra`) 설치·사용법 (사람용) |
 
