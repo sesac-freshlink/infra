@@ -163,7 +163,7 @@ notepad terraform.tfvars
 # 2) 만들기: 목록을 보여 주면 yes 입력 (예산이 먼저 만들어진다)
 Set-Content backend_override.tf "terraform {`n  backend `"local`" {}`n}"
 terraform init
-terraform apply -target=module.budget
+terraform apply "-target=module.budget"   # PowerShell에서는 따옴표가 있어야 한다
 terraform apply
 
 # 3) state를 S3로 옮기기: 물으면 yes
