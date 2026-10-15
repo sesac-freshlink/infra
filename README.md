@@ -244,8 +244,8 @@ terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초�
 **준비 (처음 한 번).** PowerShell에서 두 프로그램을 설치하고, **창을 닫았다가 새로 연다**(그래야 명령이 잡힌다).
 
 ```powershell
-winget install --id Amazon.SessionManagerPlugin -e    # SSM 포트 포워딩에 필요
-winget install --id Oracle.MySQLShell -e              # SQL 실행용 (mysqlsh)
+winget install --id Amazon.SessionManagerPlugin -e --source winget    # SSM 포트 포워딩에 필요
+winget install --id Oracle.MySQLShell -e --source winget              # SQL 실행용 (mysqlsh)
 
 # 새 창에서 확인
 session-manager-plugin    # "The Session Manager plugin was installed successfully"가 나오면 성공
