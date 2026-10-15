@@ -2,6 +2,9 @@
 
 > FreshLink가 올라가는 **AWS 인프라 전체를 Terraform 코드로** 관리한다. VPC부터 EKS, RDS, SQS, CloudFront까지 명령 한 번으로 만들고 지울 수 있다.
 
+> **구조 변경 중:** 환경을 dev·prod 두 개로 나누고 폴더를 `global/`, `envs/{dev,prod}/{persistent,cluster}/`로 바꾼다. 아래 1~6장은 아직 단일 환경 기준이며 할 일 2 작업 때 갱신한다.
+> 지금 구조는 [`CLAUDE.md`](CLAUDE.md)와 `.github` 레포 [`docs/aws-리소스-계획.md`](https://github.com/sesac-freshlink/.github/blob/main/docs/aws-%EB%A6%AC%EC%86%8C%EC%8A%A4-%EA%B3%84%ED%9A%8D.md)를 따른다.
+
 | 항목 | 내용 |
 | --- | --- |
 | 담당 | 김진아 |
