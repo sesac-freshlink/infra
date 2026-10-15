@@ -45,7 +45,7 @@ $sql.Add("SELECT user, host FROM mysql.user WHERE user LIKE '%\_app';")
 $tmp = [System.IO.Path]::GetTempFileName()
 try {
     Set-Content -Path $tmp -Value $sql -Encoding Ascii
-    $master.password | mysqlsh --sql "--host=127.0.0.1" "--port=$LocalPort" "--user=$($master.username)" --passwords-from-stdin "--file=$tmp"
+    mysqlsh --sql "--host=127.0.0.1" "--port=$LocalPort" "--user=$($master.username)" "--password=$($master.password)" "--file=$tmp"
     if ($LASTEXITCODE -ne 0) { throw "SQL 실행 실패. 포트 포워딩 창이 열려 있는지 확인한다." }
 } finally {
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
