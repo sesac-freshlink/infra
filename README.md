@@ -187,9 +187,11 @@ Remove-Item terraform.tfstate, terraform.tfstate.backup -ErrorAction SilentlyCon
 
 ### 4-2. 그 다음부터 (모든 루트)
 
-`$env:AWS_PROFILE = "freshlink-admin"`을 친 창에서 한다.
+4-1을 마친 뒤 한 번에 끝내는 단계가 아니라, 루트를 다룰 때마다 쓰는 사용법이다. `global`은 4-1에서 init까지 끝났으므로 다른 PC나 새로 clone한 폴더에서만 첫 줄을 친다. `envs/<env>/*`는 해당 할 일(dev persistent는 할 일 3, dev cluster는 할 일 9)에서 코드를 채운 뒤에 한다.
 
-```bash
+`$env:AWS_PROFILE = "freshlink-admin"`을 친 창에서, `infra` 폴더(레포 맨 위)에서 친다. `-chdir=`가 그 폴더 기준이라 `global` 안에서 치면 `chdir global` 오류가 난다.
+
+```powershell
 terraform -chdir=global init -backend-config=../backend.hcl
 terraform -chdir=envs/dev/persistent init -backend-config=../../../backend.hcl
 terraform -chdir=envs/dev/persistent plan
