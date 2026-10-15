@@ -1,0 +1,9 @@
+# 복사해서 terraform.tfvars로 저장하고 실제 메일 주소를 넣는다. terraform.tfvars는 커밋하지 않는다.
+alert_emails = [
+  "jina@example.com",
+  "taewoo@example.com",
+  "kyungwoo@example.com",
+]
+
+# 예산 알림 시험 때만 true. 메일 3통을 확인하면 false로 돌리고 다시 apply
+budget_test_alert = false

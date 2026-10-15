@@ -9,7 +9,8 @@
 | 문서 | 내용 |
 |------|------|
 | `.github` 레포 `docs/aws-리소스-계획.md` | 환경·리소스·이름(2장), 묶음·state 키(6-4), 켜고 끄기(6-5), 비용(6-6), 모듈(8장). **구조 사실의 진실** |
-| `README.md` | 소개·사용법. 아직 단일 환경 서술(최상위 `persistent/`·`cluster/`, state 키 2개)이 남아 있다. 이 `CLAUDE.md`·`aws-리소스-계획.md`와 다르면 그쪽을 따른다(README 갱신은 할 일 2) |
+| `README.md` | 소개, 루트·state 키(2장), 처음 만들기·apply 순서(4장), 팀원 계정·권한(5장), 이름 규칙(6장) |
+| `envs/README.md` | 환경 루트별 할 일, 팀원 IAM 권한이 기대는 이름·태그 규칙 |
 | `gitops/README.md` 3·4장 | dev·prod 차이, 배포·승격 |
 | `.github` 레포 `docs/jina/할일-목록.md` | 작업 순서 (2 global·state·IAM, 3 dev persistent, 9 dev cluster, 10 OIDC, 15 prod, 16 승격) |
 | `.github` 레포 `docs/기술스택과 선택이유.md` | 도구별 선택 이유 (관측성 3-5, 켜고 끄기 3-6, Cognito 3-7) |
@@ -43,7 +44,9 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 
 - 배포(이 레포 밖): 서비스 레포 `dev` 브랜치 push → ECR(태그 = 커밋 7자리) → gitops `envs/dev` → dev 클러스터. `main` 머지 → 다시 빌드하지 않고 같은 이미지 태그를 gitops `envs/prod`로 승격 → prod 클러스터. ECR과 서비스 CI가 맡는 GitHub OIDC Role은 두 환경 공용이다. `dev` 브랜치가 맡을 수 있는 Role에는 prod 쓰기 권한(prod 버킷 쓰기, prod terraform 실행 등)을 주지 않는다.
 - 팀원 IAM 그룹 `freshlink-developers`는 dev 리소스만 쓴다. prod는 읽기 권한도 없다.
-- 정하지 않은 값은 지어내지 않는다: state `key` 문자열·잠금·state 버킷 만드는 법·IAM 그룹 위치(할 일 2), 개발자별 큐 이름·`QUEUE_PREFIX` 형식(할 일 3·4), IRSA Role을 두는 묶음(할 일 9), OIDC Role 이름·개수·권한 범위(할 일 10), 스케줄 워크플로가 쓰는 Role(할 일 9·10), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
+- 할 일 2에서 정한 것: state 키 `<루트>/terraform.tfstate`(예 `dev/persistent/terraform.tfstate`), 잠금은 S3 잠금 파일(`use_lockfile`, DynamoDB 없음), 버킷 이름은 레포 루트 `backend.hcl`(커밋 안 함)로 `-backend-config`에 넘김, state 버킷·Budgets·팀원 IAM은 `global`.
+- 팀원 IAM 권한은 이름·태그로 dev를 가려낸다: 큐 `dev-*`, 비밀 `freshlink-dev-*`, Cognito·SSM 인스턴스는 태그 `Environment=dev`(provider `default_tags`), 로그 그룹 이름에 `freshlink-dev-`. 이 규칙을 어기는 이름을 만들지 않는다.
+- 정하지 않은 값은 지어내지 않는다: 개발자별 큐 이름·`QUEUE_PREFIX` 형식(할 일 3·4), IRSA Role을 두는 묶음(할 일 9), OIDC Role 이름·개수·권한 범위(할 일 10), 스케줄 워크플로가 쓰는 Role(할 일 9·10), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
 
 ---
 
@@ -52,7 +55,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 | 구분 | 기술 |
 |------|------|
 | IaC | Terraform, AWS provider (ap-northeast-2, AZ 2a·2c) |
-| 상태 | S3 `freshlink-tfstate-<계정ID 끝 4자리>`, 키 5개 `global`, `dev/persistent`, `dev/cluster`, `prod/persistent`, `prod/cluster` (실제 `key` 문자열·잠금 방식은 할 일 2에서 정함) |
+| 상태 | S3 `freshlink-tfstate-<계정ID 끝 4자리>`, 키 5개 `global`, `dev/persistent`, `dev/cluster`, `prod/persistent`, `prod/cluster` (+ `/terraform.tfstate`), S3 잠금 파일(`use_lockfile`) |
 | 컴퓨팅 | 환경마다 EKS `freshlink-<env>-eks`, 관리형 노드 그룹 t3.large × 2 (최대 3) |
 | 데이터·메시징 | 환경마다 RDS MySQL 8.0 db.t4g.small(`freshlink-<env>-mysql`)과 SSM 접속용 t4g.nano, SQS `<env>-inventory-commands.fifo`·`<env>-inventory-results`·DLQ 2개(dev는 개발자별 큐 추가) |
 | 프론트 | 환경마다 S3 + CloudFront(OAC) + ACM(us-east-1) |
@@ -87,10 +90,10 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 
 ## 디렉토리 구조
 
-목표 구조다. 지금 레포의 빈 최상위 `persistent/`·`cluster/` 폴더는 옛 구조이며 할 일 2·3에서 아래로 옮긴다. 새 코드는 최상위 `persistent/`·`cluster/`에 만들지 않는다.
+옛 최상위 `persistent/`·`cluster/` 폴더는 할 일 2에서 지웠다. 새 코드는 아래 구조에만 만든다.
 
 ```
-global/                     # 두 환경 공용 루트 (ECR, GitHub OIDC 공급자, state 저장소, Budgets)
+global/                     # 두 환경 공용 루트 (ECR, GitHub OIDC 공급자, state 저장소, Budgets, 팀원 IAM)
 envs/
 ├── dev/
 │   ├── persistent/         # dev 유지 묶음 루트

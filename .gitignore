@@ -24,3 +24,6 @@ _workspace*/
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
+
+# state 버킷 이름(계정 ID 끝 4자리). backend.hcl.example만 커밋
+backend.hcl
