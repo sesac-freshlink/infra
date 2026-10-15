@@ -29,7 +29,7 @@
 | 비용 | AWS Budgets `freshlink-monthly`, 비용 이상 탐지 `freshlink-services` | 10월 160 + 11월 200 = 360 USD. 50·80·100%와 예측 100% 초과 시 메일. 크레딧은 빼고 실제 사용 금액으로 본다 |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | 태그 덮어쓰기 금지, push 때 스캔, 최근 30개 보관 |
 | CI 인증 | GitHub OIDC 공급자 | 이 공급자를 믿는 Role은 할 일 10에서 만든다 |
-| 팀원 | IAM 그룹 `freshlink-developers`, 사용자 `freshlink-taewoo`·`freshlink-kyungwoo`·`freshlink-younghoon` | 콘솔 MFA 필수, dev 리소스만 (5장) |
+| 팀원 | IAM 그룹 `freshlink-developers`, 사용자 `freshlink-taewoo`·`freshlink-kyungwoo`·`freshlink-younghoon` | dev 리소스만 (5장) |
 
 환경마다 하나씩 있는 것 (`envs/<env>/`, 할 일 3·9·15에서 채운다)
 
@@ -236,43 +236,36 @@ CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List
 
 ### 5-1. 계정 만들어 주기 (김진아, `global` apply 뒤 한 번)
 
-`global` apply는 사용자 3명만 만들고, 로그인 비밀번호와 액세스 키는 만들지 않는다. Terraform으로 만들면 비밀 값이 state 파일에 남기 때문이다. 그래서 이 두 가지는 apply 뒤에 아래 명령으로 한 번 만든다.
+`global` apply는 사용자 3명만 만들고 로그인 비밀번호는 만들지 않는다(Terraform으로 만들면 비밀번호가 state 파일에 남는다). 김진아는 **첫 비밀번호만** 정해 준다. 액세스 키는 팀원이 5-2에서 직접 만든다.
 
-`$env:AWS_PROFILE = "freshlink-admin"`을 친 PowerShell에서 **한 사람씩** 친다. 아래는 이태우(`freshlink-taewoo`) 예시이고, 김경우는 `freshlink-kyungwoo`, 문영훈은 `freshlink-younghoon`으로 이름만 바꿔 같은 두 줄을 다시 친다.
+`$env:AWS_PROFILE = "freshlink-admin"`을 친 PowerShell에서 친다.
 
 ```powershell
-# 0) 로그인 주소 (세 사람 공통, 처음 한 번만)
+# 0) 로그인 주소: 계정 번호를 읽어 팀원이 들어갈 콘솔 주소를 보여 준다 (세 사람 공통)
 $acct = aws sts get-caller-identity --query Account --output text
 "https://$acct.signin.aws.amazon.com/console"
 
-# 1) 콘솔 비밀번호 만들기
-aws iam create-login-profile --user-name freshlink-taewoo --password "<임시 비밀번호>" --password-reset-required
-
-# 2) CLI용 액세스 키 만들기
-aws iam create-access-key --user-name freshlink-taewoo --query "AccessKey.[AccessKeyId,SecretAccessKey]" --output text
+# 1) 첫 비밀번호: 사람마다 <임시 비밀번호>를 다르게 정해서 친다
+aws iam create-login-profile --user-name freshlink-taewoo    --password "<임시 비밀번호>" --password-reset-required
+aws iam create-login-profile --user-name freshlink-kyungwoo  --password "<임시 비밀번호>" --password-reset-required
+aws iam create-login-profile --user-name freshlink-younghoon --password "<임시 비밀번호>" --password-reset-required
 ```
 
-각 줄이 하는 일
+- `--password-reset-required`: 팀원이 첫 로그인 때 자기 비밀번호로 바꾸게 한다.
+- 임시 비밀번호는 계정 비밀번호 정책 때문에 **14자 이상, 대문자·소문자·숫자·기호를 모두** 넣어야 한다(예 형식 `Fresh-Link-2026!a`). 안 맞으면 `PasswordPolicyViolation`이 나니 바꿔서 다시 친다.
+- 성공하면 JSON 몇 줄이 나온다. 이미 만든 사람이면 `EntityAlreadyExists`가 나고, 그때 비밀번호를 다시 정하려면 `create-login-profile` 대신 `update-login-profile`로 친다.
+- 사람마다 **로그인 주소, 사용자 이름(`freshlink-<이름>`), 임시 비밀번호** 세 가지를 직접 전달한다(채팅방·레포에 붙여 넣지 않는다).
 
-| 줄 | 하는 일 | 화면에 나오는 것 |
-| --- | --- | --- |
-| 0) `aws sts get-caller-identity ...` | 지금 계정의 12자리 번호를 `$acct`에 담는다 | 없음 |
-| 0) `"https://$acct..."` | 그 번호로 팀원이 들어갈 콘솔 로그인 주소를 만든다 | `https://123456789012.signin.aws.amazon.com/console` 같은 주소 |
-| 1) `create-login-profile` | 그 사용자에게 콘솔 비밀번호를 준다. `--password-reset-required` 때문에 팀원은 첫 로그인 때 자기 비밀번호로 바꿔야 한다 | JSON 몇 줄(성공 표시). 비밀번호는 다시 보여 주지 않는다 |
-| 2) `create-access-key` | 그 사용자의 CLI용 키를 만든다 | 한 줄에 두 값: 앞이 **액세스 키**(`AKIA...`), 뒤가 **비밀 키** |
+### 5-2. 처음 설정 (팀원, 한 번)
 
-- `<임시 비밀번호>`는 사람마다 다르게 직접 정해서 넣는다. 계정 비밀번호 정책 때문에 **14자 이상, 대문자·소문자·숫자·기호를 모두** 넣어야 한다(예 형식 `Fresh-Link-2026!a`). 규칙에 안 맞으면 `PasswordPolicyViolation` 오류가 나니 바꿔서 다시 친다.
-- 2)의 **비밀 키는 이 화면에서 한 번만** 볼 수 있다. 바로 그 사람에게 줄 메모에 옮긴다.
-- 사람마다 **로그인 주소, 사용자 이름, 임시 비밀번호, 액세스 키, 비밀 키** 다섯 가지를 직접 전달한다(채팅방·레포에 붙여 넣지 않는다).
-- 이미 만든 사람에게 1)을 다시 치면 `EntityAlreadyExists`가 난다. 비밀번호를 다시 정하려면 `create-login-profile` 대신 `update-login-profile`로 친다.
-- 비밀 키를 잃어버리면 `aws iam list-access-keys --user-name <사용자>`로 옛 키 ID를 보고 `aws iam delete-access-key --user-name <사용자> --access-key-id <옛 키 ID>`로 지운 뒤 2)를 다시 친다(한 사람당 키는 2개까지).
-
-### 5-2. 팀원 PC 설정 (팀원, 한 번)
+1. 받은 주소로 콘솔에 로그인하고 새 비밀번호로 바꾼다.
+2. 오른쪽 위 이름 → **보안 자격 증명** → **액세스 키 만들기** → 사용 사례 "명령줄 인터페이스(CLI)" → 액세스 키와 비밀 액세스 키를 받는다. 비밀 키는 이 화면에서만 보인다.
+3. PC에서 그 키를 프로필 `freshlink-dev`로 넣는다.
 
 ```powershell
 aws configure --profile freshlink-dev
-#   AWS Access Key ID:     (받은 액세스 키)
-#   AWS Secret Access Key: (받은 비밀 키)
+#   AWS Access Key ID:     (2에서 받은 액세스 키)
+#   AWS Secret Access Key: (2에서 받은 비밀 키)
 #   Default region name:   ap-northeast-2
 #   Default output format: json
 
@@ -281,8 +274,8 @@ aws sts get-caller-identity --profile freshlink-dev    # "user/freshlink/freshli
 
 - AWS 명령에는 `--profile freshlink-dev`를 붙인다. 매번 붙이기 싫으면 그 창에서 먼저 `$env:AWS_PROFILE = "freshlink-dev"`를 친다.
 - IntelliJ에서 서비스를 띄울 때는 실행 설정의 환경 변수에 `AWS_PROFILE=freshlink-dev`를 넣는다.
-- CLI는 MFA 없이 액세스 키만으로 된다.
-- 콘솔은 받은 주소와 비밀번호로 들어가 새 비밀번호로 바꾼 뒤, 오른쪽 위 이름 → 보안 자격 증명에서 MFA를 등록한다. **콘솔은 MFA를 등록하기 전에는 다른 것이 모두 거부된다.**
+- MFA는 강제하지 않는다. 원하면 같은 보안 자격 증명 화면에서 등록해도 된다.
+- 비밀 키를 잃어버리면 같은 화면에서 옛 키를 삭제하고 새로 만든다.
 
 ### 5-3. 확인 (할 일 2 완료 기준)
 
