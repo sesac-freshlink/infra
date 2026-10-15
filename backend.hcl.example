@@ -1,0 +1,4 @@
+# 복사해서 backend.hcl로 저장하고 계정 ID 끝 4자리를 넣는다. backend.hcl은 커밋하지 않는다.
+#   cp backend.hcl.example backend.hcl
+# 모든 루트에서 terraform init -backend-config=<레포 루트>/backend.hcl 로 쓴다.
+bucket = "freshlink-tfstate-0000"
