@@ -199,9 +199,9 @@ Remove-Item terraform.tfstate, terraform.tfstate.backup -ErrorAction SilentlyCon
 `$env:AWS_PROFILE = "freshlink-admin"`을 친 창에서, `infra` 폴더(레포 맨 위)에서 친다. `-chdir=`가 그 폴더 기준이라 `global` 안에서 치면 `chdir global` 오류가 난다.
 
 ```powershell
-terraform -chdir=global init -backend-config=../backend.hcl
-terraform -chdir=envs/dev/persistent init -backend-config=../../../backend.hcl
-terraform -chdir=envs/dev/persistent plan
+terraform "-chdir=global" init "-backend-config=../backend.hcl"
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" plan
 ```
 
 apply 순서는 `global` → `envs/<env>/persistent` → `envs/<env>/cluster`, dev 먼저다. `cluster`는 `destroy`해도 되지만 `global`과 `persistent`는 지우지 않는다.
@@ -217,7 +217,7 @@ aws ec2 describe-instance-type-offerings --location-type availability-zone \
 
 ```powershell
 notepad global\terraform.tfvars    # budget_test_alert = true 로 바꾸고 저장
-terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초과 시 메일) 생성
+terraform "-chdir=global" apply      # freshlink-alert-test 예산(1 USD, 1% 초과 시 메일) 생성
 ```
 
 이번 달 실제 사용 금액이 0.01 USD를 넘으면 네 사람에게 메일이 간다. Budgets는 하루 몇 번만 평가하므로 메일까지 몇 시간 걸릴 수 있다. 네 사람이 메일을 받으면 `budget_test_alert = false`로 돌리고 다시 apply해서 시험 예산을 지운다.
@@ -259,9 +259,9 @@ git pull
 $env:AWS_PROFILE = "freshlink-admin"
 aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
 
-terraform -chdir=envs/dev/persistent init -backend-config=../../../backend.hcl
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
 #   "Terraform has been successfully initialized!"가 나오면 성공
-terraform -chdir=envs/dev/persistent apply
+terraform "-chdir=envs/dev/persistent" apply
 #   "Plan: 64 to add, 0 to change, 0 to destroy."를 보고 yes 입력
 #   10~15분 뒤 "Apply complete! Resources: 64 added"가 나오면 성공
 ```
@@ -294,8 +294,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1
 **5) 팀원에게 줄 값.** 아래 두 값을 이태우·김경우에게 전달한다(비밀번호는 팀원이 직접 꺼낸다).
 
 ```powershell
-terraform -chdir=envs/dev/persistent output -raw ssm_access_instance_id; ""   # i-로 시작
-terraform -chdir=envs/dev/persistent output -raw db_address; ""               # freshlink-dev-mysql....rds.amazonaws.com
+terraform "-chdir=envs/dev/persistent" output -raw ssm_access_instance_id; ""   # i-로 시작
+terraform "-chdir=envs/dev/persistent" output -raw db_address; ""               # freshlink-dev-mysql....rds.amazonaws.com
 ```
 
 **6) 21:00에 꺼지는지 확인.** 21:00이 지나고 친다.
@@ -310,7 +310,7 @@ aws scheduler list-schedules --group-name freshlink-dev --query "Schedules[].Nam
 
 ```powershell
 aws rds start-db-instance --db-instance-identifier freshlink-dev-mysql --query "DBInstance.DBInstanceStatus" --output text
-aws ec2 start-instances --instance-ids (terraform -chdir=envs/dev/persistent output -raw ssm_access_instance_id) --query "StartingInstances[0].CurrentState.Name" --output text
+aws ec2 start-instances --instance-ids (terraform "-chdir=envs/dev/persistent" output -raw ssm_access_instance_id) --query "StartingInstances[0].CurrentState.Name" --output text
 ```
 
 | 증상 | 원인과 해결 |
