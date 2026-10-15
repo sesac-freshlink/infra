@@ -21,7 +21,7 @@ resource "aws_budgets_budget" "monthly" {
     for_each = local.planned_limits
     content {
       start_time = "${planned_limit.key}-01_00:00"
-      amount     = tostring(planned_limit.value)
+      amount     = format("%.1f", planned_limit.value) # AWS가 "160.0"으로 돌려줘서 같은 모양으로 맞춘다(안 맞추면 plan마다 바뀐다고 나온다)
       unit       = "USD"
     }
   }
