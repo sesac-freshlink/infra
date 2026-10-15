@@ -117,41 +117,140 @@ infra/
 
 ## 4. 사용법
 
-준비물: Terraform 1.11 이상, AWS CLI, kubectl, Helm. 관리자 자격(김진아)으로 실행한다.
+모든 명령은 `infra` 레포 폴더(예 `C:\fresh-link\repos\infra`)에서 연 터미널에서 친다. 아래는 Windows PowerShell 기준이고, Git Bash·WSL·macOS용 명령은 각 블록 아래에 따로 적었다. Terraform은 **김진아 관리자 자격으로만** 실행한다. 팀원은 Terraform을 돌리지 않는다(팀원 준비는 5장).
+
+### 4-0. 준비: 설치와 AWS 로그인 (처음 한 번)
+
+**1) 도구 설치.** PowerShell을 열고 설치한 뒤, **터미널을 닫았다가 다시 열어야** 명령을 찾는다.
+
+```powershell
+winget install Hashicorp.Terraform     # 1.11 이상
+winget install Amazon.AWSCLI           # v2
+terraform version
+aws --version
+```
+
+kubectl·Helm은 클러스터 묶음(할 일 9)부터 필요하다. 지금은 없어도 된다.
+
+**2) 관리자 IAM 사용자 만들기 (콘솔).** 루트 계정(가입한 이메일로 로그인하는 계정)으로 Terraform을 돌리지 않는다. 루트 계정 액세스 키는 만들지 않는다.
+
+1. 루트 계정으로 [AWS 콘솔](https://console.aws.amazon.com/)에 로그인한다. 루트 계정에 MFA가 없으면 오른쪽 위 계정 이름 → 보안 자격 증명 → MFA 할당부터 한다.
+2. IAM → 사용자 → 사용자 생성: 이름 `jina-admin`, "AWS Management Console에 대한 사용자 액세스 권한 제공" 체크.
+3. 권한: "직접 정책 연결" → `AdministratorAccess`.
+4. 만든 사용자 → 보안 자격 증명 탭 → MFA 디바이스 할당(인증 앱).
+5. 같은 탭 → 액세스 키 만들기 → 사용 사례 "CLI" → 키 ID와 비밀 액세스 키를 받는다. **비밀 키는 이 화면에서만 보인다.** 채팅·메모장·레포에 붙여 넣지 않고 바로 다음 단계에 입력한다.
+
+이미 관리자 IAM 사용자와 액세스 키가 있으면 2)는 건너뛴다.
+
+**3) PC에 자격 등록.**
+
+```powershell
+aws configure --profile freshlink-admin
+#   AWS Access Key ID:     (위에서 받은 키 ID)
+#   AWS Secret Access Key: (위에서 받은 비밀 키)
+#   Default region name:   ap-northeast-2
+#   Default output format: json
+```
+
+키는 `C:\Users\<사용자>\.aws\credentials`에 저장된다. 이 파일은 레포 밖이라 git에 올라가지 않는다.
+
+**4) 이 터미널에서 쓸 프로필을 정하고 로그인 확인.** 새 터미널을 열 때마다 첫 줄을 다시 친다.
+
+```powershell
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity
+```
+
+`"Arn": "arn:aws:iam::<계정ID>:user/jina-admin"`처럼 **관리자 사용자**가 나오면 준비 끝이다. `...:root`가 나오면 루트 계정 키를 쓰고 있는 것이니 2)부터 다시 한다. `Unable to locate credentials`가 나오면 3)이 안 된 것이다.
+
+Git Bash에서는 `export AWS_PROFILE=freshlink-admin`.
 
 ### 4-1. 맨 처음 한 번: `global` 만들기
 
-state 버킷이 아직 없으므로 처음에는 로컬 state로 만들고, 버킷이 생기면 state를 버킷으로 옮긴다. **Budgets를 가장 먼저** 만든다.
+state 버킷이 아직 없으므로 처음에는 로컬 state로 만들고, 버킷이 생기면 state를 버킷으로 옮긴다. **Budgets를 가장 먼저** 만든다. 4-0의 `aws sts get-caller-identity`가 관리자 사용자로 나오는 터미널에서 한다.
 
-```bash
+**1) 변수 파일 만들기**
+
+```powershell
 cd global
-cp terraform.tfvars.example terraform.tfvars        # 메일 3개(김진아, 이태우, 김경우) 넣기
-
-# 1) 로컬 state로 시작 (*_override.tf는 .gitignore에 있어 커밋되지 않는다)
-printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
-terraform init
-
-# 2) 예산·이상 탐지 먼저
-terraform apply -target=module.budget
-
-# 3) 나머지 전부 (state 버킷, ECR, OIDC, 팀원 IAM)
-terraform apply
-terraform output tfstate_bucket                     # 버킷 이름 확인
-
-# 4) state를 S3로 옮기기
-cd ..
-cp backend.hcl.example backend.hcl                  # bucket 값을 위 출력값으로 고친다
-rm global/backend_override.tf
-cd global
-terraform init -migrate-state -backend-config=../backend.hcl   # "yes"
-rm -f terraform.tfstate terraform.tfstate.backup    # S3에 올라간 것을 확인한 뒤 로컬 사본 삭제
+Copy-Item terraform.tfvars.example terraform.tfvars
+notepad terraform.tfvars        # alert_emails에 김진아·이태우·김경우 메일 3개를 넣고 저장
 ```
 
-비용 이상 탐지 모니터를 만들 때 `LimitExceeded`가 나면 계정에 AWS가 자동으로 만든 서비스 모니터(`Default-Services-Monitor`)가 이미 있는 것이다. `aws ce get-anomaly-monitors`로 ARN을 찾아 콘솔에서 지우고 다시 apply한다.
+**2) 로컬 state로 시작.** `backend_override.tf`는 `.gitignore`에 있어 커밋되지 않는다.
 
-`.terraform.lock.hcl`은 처음 `init`한 PC에서 생기며 커밋한다. 다른 OS에서도 쓰려면 `terraform providers lock -platform=windows_amd64 -platform=linux_amd64`로 해시를 같이 넣는다.
+```powershell
+Set-Content backend_override.tf "terraform {`n  backend `"local`" {}`n}"
+terraform init
+```
+
+`Terraform has been successfully initialized!`가 나오면 된다.
+
+**3) 예산·이상 탐지 먼저 만들기**
+
+```powershell
+terraform apply -target=module.budget
+```
+
+만들 목록(`Plan: 3 to add` 안팎)이 나오면 이름과 메일 주소를 훑어보고 `yes`를 친다. `-target` 경고는 정상이다.
+
+**4) 나머지 전부 만들기 (state 버킷, ECR, OIDC, 팀원 IAM)**
+
+```powershell
+terraform apply
+terraform output tfstate_bucket   # 예 "freshlink-tfstate-1234"
+```
+
+**5) state를 S3로 옮기기**
+
+```powershell
+cd ..
+Copy-Item backend.hcl.example backend.hcl
+notepad backend.hcl               # bucket 값을 4)의 출력값으로 바꾸고 저장
+Remove-Item global\backend_override.tf
+cd global
+terraform init -migrate-state "-backend-config=../backend.hcl"   # 복사할지 물으면 yes
+```
+
+**6) S3에 올라갔는지 확인하고 로컬 사본 지우기**
+
+```powershell
+aws s3 ls s3://freshlink-tfstate-1234/global/   # 4)의 버킷 이름. terraform.tfstate가 보여야 한다
+terraform plan                                  # "No changes."가 나와야 한다
+Remove-Item terraform.tfstate, terraform.tfstate.backup -ErrorAction SilentlyContinue
+```
+
+**7) 잠금 파일 커밋.** `global/.terraform.lock.hcl`이 새로 생긴다. 다른 OS 해시도 넣어서 커밋한다.
+
+```powershell
+terraform providers lock -platform=windows_amd64 -platform=linux_amd64 -platform=darwin_arm64
+cd ..
+git add global/.terraform.lock.hcl
+git commit -m "chore(I-01): global provider 잠금 파일 추가"
+git push
+```
+
+Git Bash에서는 1)·2)·5)·6)을 다음처럼 바꾼다.
+
+```bash
+cp terraform.tfvars.example terraform.tfvars
+printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
+cp ../backend.hcl.example ../backend.hcl && rm backend_override.tf
+rm -f terraform.tfstate terraform.tfstate.backup
+```
+
+자주 나는 오류
+
+| 오류 | 원인과 해결 |
+| --- | --- |
+| `No valid credential sources found`, `ExpiredToken` | 이 터미널에 `$env:AWS_PROFILE`이 없다. 4-0의 4)를 다시 친다 |
+| 비용 이상 탐지에서 `LimitExceeded` | AWS가 자동으로 만든 서비스 모니터(`Default-Services-Monitor`)가 이미 있다. `aws ce get-anomaly-monitors`로 확인하고 콘솔(Billing → 비용 이상 탐지)에서 지운 뒤 다시 apply |
+| `BucketAlreadyExists` | 버킷 이름이 다른 계정과 겹쳤다. 거의 없는 일이며, 생기면 알린다 |
+| `Error acquiring the state lock` | 다른 터미널에서 같은 루트를 돌리고 있다. 끝난 뒤 다시 한다 |
 
 ### 4-2. 그 다음부터 (모든 루트)
+
+4-0의 4)로 관리자 프로필을 고른 터미널에서 한다.
 
 ```bash
 terraform -chdir=global init -backend-config=../backend.hcl
@@ -170,8 +269,8 @@ aws ec2 describe-instance-type-offerings --location-type availability-zone \
 
 ### 4-3. 예산 알림 시험
 
-```bash
-# terraform.tfvars에서 budget_test_alert = true
+```powershell
+notepad global\terraform.tfvars    # budget_test_alert = true 로 바꾸고 저장
 terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초과 시 메일) 생성
 ```
 
@@ -200,12 +299,15 @@ CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List
 
 ### 5-1. 계정 전달 (김진아)
 
-콘솔 비밀번호와 액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). `global` apply 뒤 사람마다 한 번 실행한다.
+콘솔 비밀번호와 액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). `global` apply 뒤, 4-0의 관리자 프로필 터미널에서 사람마다 한 번 실행한다.
 
-```bash
-aws iam create-login-profile --user-name freshlink-taewoo \
-  --password '<임시 비밀번호>' --password-reset-required
+```powershell
+aws iam create-login-profile --user-name freshlink-taewoo --password "<임시 비밀번호>" --password-reset-required
+aws iam create-login-profile --user-name freshlink-kyungwoo --password "<임시 비밀번호>" --password-reset-required
+aws iam create-login-profile --user-name freshlink-younghoon --password "<임시 비밀번호>" --password-reset-required
 ```
+
+임시 비밀번호는 사람마다 다르게, 14자 이상에 대문자·소문자·숫자·기호를 섞는다(계정 비밀번호 정책). 명령 기록에 남지 않게 하려면 콘솔(IAM → 사용자 → 보안 자격 증명 → 콘솔 액세스 활성화, "다음 로그인 시 비밀번호 재설정" 체크)에서 만들어도 된다.
 
 계정 ID(로그인 주소), 사용자 이름, 임시 비밀번호는 **채팅이나 레포에 붙여 넣지 않고 직접 전달**한다.
 
