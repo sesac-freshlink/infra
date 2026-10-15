@@ -1,7 +1,7 @@
 # 팀원 IAM 사용자와 그룹 freshlink-developers.
-# - MFA를 켜기 전에는 비밀번호 바꾸기·MFA 등록 말고는 아무것도 못 한다.
+# - MFA는 강제하지 않는다(콘솔·CLI 모두). CLI는 액세스 키 하나로 바로 쓴다.
 # - 권한은 dev 리소스만. prod 리소스는 읽기 권한도 없다(허용 문장이 없으면 기본 거부).
-# - 콘솔 비밀번호·액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). README 5장 참고.
+# - 콘솔 비밀번호·액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). 첫 비밀번호는 README 5-1 명령으로, 액세스 키는 팀원이 직접 만든다(5-2).
 # 팀원이 빠지면 var.developers에서 지우고 apply한다(force_destroy로 키·MFA까지 같이 지운다).
 
 locals {
@@ -46,9 +46,9 @@ resource "aws_iam_account_password_policy" "this" {
 }
 
 # ---------------------------------------------------------------------------
-# 1) MFA 필수: AWS 공식 예시(BlockMostAccessUnlessSignedInWithMFA)를 따른다
+# 1) 본인 비밀번호·액세스 키·MFA 관리 (MFA는 강제하지 않는다. 등록은 각자 선택)
 # ---------------------------------------------------------------------------
-data "aws_iam_policy_document" "require_mfa" {
+data "aws_iam_policy_document" "self_service" {
   statement {
     sid       = "AllowViewAccountInfo"
     actions   = ["iam:GetAccountPasswordPolicy", "iam:ListVirtualMFADevices"]
@@ -87,36 +87,13 @@ data "aws_iam_policy_document" "require_mfa" {
     ]
     resources = ["${local.arn_prefix}:iam::${local.account_id}:user/freshlink/$${aws:username}"]
   }
-
-  statement {
-    sid    = "DenyAllExceptListedIfNoMFA"
-    effect = "Deny"
-    not_actions = [
-      "iam:CreateVirtualMFADevice",
-      "iam:EnableMFADevice",
-      "iam:GetUser",
-      "iam:GetMFADevice",
-      "iam:ListMFADevices",
-      "iam:ListVirtualMFADevices",
-      "iam:ResyncMFADevice",
-      "iam:ChangePassword",
-      "iam:GetAccountPasswordPolicy",
-      "sts:GetSessionToken",
-    ]
-    resources = ["*"]
-    condition {
-      test     = "BoolIfExists"
-      variable = "aws:MultiFactorAuthPresent"
-      values   = ["false"]
-    }
-  }
 }
 
-resource "aws_iam_policy" "require_mfa" {
-  name        = "freshlink-require-mfa"
+resource "aws_iam_policy" "self_service" {
+  name        = "freshlink-self-service"
   path        = "/freshlink/"
-  description = "MFA 없이는 비밀번호 변경·MFA 등록 외 모든 요청을 거부한다"
-  policy      = data.aws_iam_policy_document.require_mfa.json
+  description = "본인 비밀번호·액세스 키·MFA 기기 관리"
+  policy      = data.aws_iam_policy_document.self_service.json
 }
 
 # ---------------------------------------------------------------------------
@@ -233,9 +210,9 @@ resource "aws_iam_policy" "dev_access" {
   policy      = data.aws_iam_policy_document.dev_access.json
 }
 
-resource "aws_iam_group_policy_attachment" "require_mfa" {
+resource "aws_iam_group_policy_attachment" "self_service" {
   group      = aws_iam_group.developers.name
-  policy_arn = aws_iam_policy.require_mfa.arn
+  policy_arn = aws_iam_policy.self_service.arn
 }
 
 resource "aws_iam_group_policy_attachment" "dev_access" {
