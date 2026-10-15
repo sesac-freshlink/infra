@@ -155,7 +155,7 @@ state 버킷이 아직 없어서 처음에는 PC에 state를 두고 만든 뒤, 
 ```powershell
 $env:AWS_PROFILE = "freshlink-admin"
 
-# 1) 알림 메일 넣기: 열리는 메모장에서 메일 3개를 고치고 저장
+# 1) 알림 메일 넣기: 열리는 메모장에서 팀원 4명(김진아·이태우·김경우·문영훈) 메일을 넣고 저장
 cd global
 Copy-Item terraform.tfvars.example terraform.tfvars
 notepad terraform.tfvars
@@ -163,7 +163,7 @@ notepad terraform.tfvars
 # 2) 만들기: 목록을 보여 주면 yes 입력 (예산이 먼저 만들어진다)
 Set-Content backend_override.tf "terraform {`n  backend `"local`" {}`n}"
 terraform init
-terraform apply -target=module.budget
+terraform apply "-target=module.budget"   # PowerShell에서는 따옴표가 있어야 한다
 terraform apply
 
 # 3) state를 S3로 옮기기: 물으면 yes
@@ -211,7 +211,7 @@ notepad global\terraform.tfvars    # budget_test_alert = true 로 바꾸고 저�
 terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초과 시 메일) 생성
 ```
 
-이번 달 실제 사용 금액이 0.01 USD를 넘으면 세 사람에게 메일이 간다. Budgets는 하루 몇 번만 평가하므로 메일까지 몇 시간 걸릴 수 있다. 세 사람이 메일을 받으면 `budget_test_alert = false`로 돌리고 다시 apply해서 시험 예산을 지운다.
+이번 달 실제 사용 금액이 0.01 USD를 넘으면 네 사람에게 메일이 간다. Budgets는 하루 몇 번만 평가하므로 메일까지 몇 시간 걸릴 수 있다. 네 사람이 메일을 받으면 `budget_test_alert = false`로 돌리고 다시 apply해서 시험 예산을 지운다.
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

@@ -1,5 +1,5 @@
 variable "alert_emails" {
-  description = "예산·비용 이상 알림 메일 (김진아, 이태우, 김경우). 실값은 terraform.tfvars에만 둔다"
+  description = "예산·비용 이상 알림 메일 (김진아, 이태우, 김경우, 문영훈). 실값은 terraform.tfvars에만 둔다"
   type        = list(string)
 }
 

@@ -3,7 +3,8 @@ alert_emails = [
   "jina@example.com",
   "taewoo@example.com",
   "kyungwoo@example.com",
+  "younghoon@example.com",
 ]
 
-# 예산 알림 시험 때만 true. 메일 3통을 확인하면 false로 돌리고 다시 apply
+# 예산 알림 시험 때만 true. 메일 4통을 확인하면 false로 돌리고 다시 apply
 budget_test_alert = false

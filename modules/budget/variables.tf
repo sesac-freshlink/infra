@@ -37,7 +37,7 @@ variable "anomaly_threshold_usd" {
 }
 
 variable "create_test_budget" {
-  description = "true면 알림 시험용 예산(1 USD, 1% 초과 시 메일)을 만든다. 메일 3통 확인 후 false로 돌려 지운다"
+  description = "true면 알림 시험용 예산(1 USD, 1% 초과 시 메일)을 만든다. 메일을 모두 받은 뒤 false로 돌려 지운다"
   type        = bool
   default     = false
 }
