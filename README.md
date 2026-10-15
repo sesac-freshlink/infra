@@ -29,7 +29,7 @@
 | 비용 | AWS Budgets `freshlink-monthly`, 비용 이상 탐지 `freshlink-services` | 10월 160 + 11월 200 = 360 USD. 50·80·100%와 예측 100% 초과 시 메일. 크레딧은 빼고 실제 사용 금액으로 본다 |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | 태그 덮어쓰기 금지, push 때 스캔, 최근 30개 보관 |
 | CI 인증 | GitHub OIDC 공급자 | 이 공급자를 믿는 Role은 할 일 10에서 만든다 |
-| 팀원 | IAM 그룹 `freshlink-developers`에 기존 사용자 `sesac-c1`·`sesac-c3`·`sesac-c4`를 넣음 | MFA 필수, dev 리소스만 (5장) |
+| 팀원 | IAM 그룹 `freshlink-developers`에 기존 사용자 `sesac-c1`·`sesac-c3`·`sesac-c4`를 넣음 | 콘솔 MFA 필수(CLI는 액세스 키만), dev 리소스만 (5장) |
 
 환경마다 하나씩 있는 것 (`envs/<env>/`, 할 일 3·9·15에서 채운다)
 
@@ -81,12 +81,11 @@ infra/
 ├── envs/
 │   ├── dev/{persistent,cluster}/
 │   └── prod/{persistent,cluster}/
-├── modules/
-│   ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
-│   ├── ecr/             # 리포지토리, 보관 개수 정책
-│   ├── network/  eks/  irsa/  rds/  messaging/  frontend/
-│   └── observability/  scheduler/  cognito/
-└── scripts/aws-mfa.*    # 팀원 PC에서 MFA 임시 자격 받기
+└── modules/
+    ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
+    ├── ecr/             # 리포지토리, 보관 개수 정책
+    ├── network/  eks/  irsa/  rds/  messaging/  frontend/
+    └── observability/  scheduler/  cognito/
 ```
 
 새 리소스 위치: 두 환경이 같이 쓰면 `global`, 주말 동안 남아야 하면 `envs/<env>/persistent`, 시간당 과금이고 다시 만들어도 되면 `envs/<env>/cluster`.
@@ -302,7 +301,7 @@ CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List
 
 ### 5-1. 관리자 그룹에서 빼기 (김진아, `global` apply 뒤 한 번)
 
-**하기 전에** 세 팀원에게 권한이 dev 전용으로 줄고 MFA를 등록해야 쓸 수 있다고 알린다. 새싹 측 규칙이 있을 수 있으니 필요하면 강사님께 먼저 확인한다.
+**하기 전에** 세 팀원에게 권한이 dev 전용으로 줄고, 콘솔은 MFA를 등록해야 쓸 수 있다고 알린다(CLI는 MFA 없이 그대로 된다). 새싹 측 규칙이 있을 수 있으니 필요하면 강사님께 먼저 확인한다.
 
 4-0의 3)에서 `user/sesac-c2`가 나온 터미널에서 친다.
 
@@ -322,26 +321,25 @@ aws iam get-group --group-name sesac-c --query "Users[].UserName"   # ["sesac-c2
 로그인 주소·사용자 이름·비밀번호는 새싹에서 받은 그대로 쓴다.
 
 1. 콘솔에 로그인한다.
-2. 오른쪽 위 이름 → 보안 자격 증명 → MFA 디바이스 할당(인증 앱). **MFA를 등록하기 전에는 다른 것이 모두 거부된다.**
+2. 오른쪽 위 이름 → 보안 자격 증명 → MFA 디바이스 할당(인증 앱). **콘솔은 MFA를 등록하기 전에는 다른 것이 모두 거부된다.**
 3. 로그아웃 후 MFA로 다시 로그인하고, 같은 화면에서 액세스 키를 만든다(용도: CLI). 이미 액세스 키가 있으면 그 키를 써도 된다.
-4. PC에서 키를 등록하고 MFA 임시 자격을 받는다. 임시 자격은 12시간 유효하니 아침마다 다시 받는다.
+4. PC에서 키를 등록한다. CLI는 MFA 없이 액세스 키만으로 쓴다.
 
 ```powershell
-aws configure --profile freshlink                       # 액세스 키, 리전 ap-northeast-2
-powershell -ExecutionPolicy Bypass -File scripts\aws-mfa.ps1   # Git Bash·WSL은 ./scripts/aws-mfa.sh
-aws sts get-caller-identity --profile freshlink-dev
+aws configure                   # 본인 sesac-cN 액세스 키, 리전 ap-northeast-2, output json
+aws sts get-caller-identity     # 본인 사용자(user/sesac-cN)가 나와야 한다
 ```
 
-IntelliJ나 Gradle로 서비스를 띄울 때는 환경 변수 `AWS_PROFILE=freshlink-dev`를 준다.
+기본 프로필을 쓰므로 IntelliJ나 Gradle로 서비스를 띄울 때 `AWS_PROFILE`을 따로 주지 않아도 된다.
 
 ### 5-3. 확인 (할 일 2 완료 기준)
 
 팀원 PC에서 친다.
 
 ```powershell
-aws sts get-caller-identity --profile freshlink-dev                                   # 성공해야 한다
-aws sqs get-queue-url --queue-name prod-inventory-results --profile freshlink-dev     # AccessDenied여야 한다
-aws sqs get-queue-url --queue-name dev-inventory-results --profile freshlink-dev      # 할 일 3 이후 성공
+aws sts get-caller-identity                                   # 성공해야 한다
+aws sqs get-queue-url --queue-name prod-inventory-results     # AccessDenied여야 한다
+aws sqs get-queue-url --queue-name dev-inventory-results      # 할 일 3 이후 성공
 ```
 
 prod 큐가 아직 없어도 권한 검사가 먼저라 `AccessDenied`가 나온다(`QueueDoesNotExist`가 나오면 권한이 새는 것이다. 그 사람이 아직 `sesac-c`에 남아 있지 않은지 5-1을 확인한다).

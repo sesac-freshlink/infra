@@ -2,7 +2,7 @@
 # - 팀원은 새싹이 발급한 기존 IAM 사용자(sesac-cN)를 그대로 쓴다. Terraform은 사용자를 만들지 않고 그룹에 넣기만 한다.
 # - 새싹 기본 그룹 sesac-c에는 AdministratorAccess가 붙어 있다. 팀원을 그 그룹에서 빼야 아래 dev 전용 권한만 남는다.
 #   그룹에서 빼는 것은 Terraform 밖에서 사람이 한 번 한다(README 5-1). sesac-c 그룹은 새싹 관리라 Terraform으로 건드리지 않는다.
-# - MFA를 켜기 전에는 비밀번호 바꾸기·MFA 등록 말고는 아무것도 못 한다.
+# - 콘솔은 MFA를 켜기 전에는 비밀번호 바꾸기·MFA 등록 말고는 아무것도 못 한다. CLI(액세스 키)는 MFA 없이 쓴다.
 # - 권한은 dev 리소스만. prod 리소스는 읽기 권한도 없다(허용 문장이 없으면 기본 거부).
 
 locals {
@@ -41,7 +41,8 @@ resource "aws_iam_account_password_policy" "this" {
 }
 
 # ---------------------------------------------------------------------------
-# 1) MFA 필수: AWS 공식 예시(BlockMostAccessUnlessSignedInWithMFA)를 따른다
+# 1) 콘솔 MFA 필수: AWS 공식 예시(BlockMostAccessUnlessSignedInWithMFA)를 따르되,
+#    조건을 Bool로 둬서 aws:MultiFactorAuthPresent 키가 없는 액세스 키(CLI) 요청은 막지 않는다.
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "require_mfa" {
   statement {
@@ -100,7 +101,7 @@ data "aws_iam_policy_document" "require_mfa" {
     ]
     resources = ["*"]
     condition {
-      test     = "BoolIfExists"
+      test     = "Bool"
       variable = "aws:MultiFactorAuthPresent"
       values   = ["false"]
     }
@@ -110,7 +111,7 @@ data "aws_iam_policy_document" "require_mfa" {
 resource "aws_iam_policy" "require_mfa" {
   name        = "freshlink-require-mfa"
   path        = "/freshlink/"
-  description = "MFA 없이는 비밀번호 변경·MFA 등록 외 모든 요청을 거부한다"
+  description = "MFA 없이 로그인한 콘솔에서는 비밀번호 변경·MFA 등록 외 모든 요청을 거부한다. 액세스 키(CLI)는 막지 않는다"
   policy      = data.aws_iam_policy_document.require_mfa.json
 }
 
