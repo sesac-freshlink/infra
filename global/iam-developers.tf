@@ -1,7 +1,7 @@
 # 팀원 IAM 사용자와 그룹 freshlink-developers.
-# - MFA를 켜기 전에는 비밀번호 바꾸기·MFA 등록 말고는 아무것도 못 한다.
+# - 콘솔은 MFA를 켜기 전에는 비밀번호 바꾸기·MFA 등록 말고는 아무것도 못 한다. CLI는 액세스 키 하나로 바로 쓴다(MFA 강제 없음).
 # - 권한은 dev 리소스만. prod 리소스는 읽기 권한도 없다(허용 문장이 없으면 기본 거부).
-# - 콘솔 비밀번호·액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). README 5장 참고.
+# - 콘솔 비밀번호·액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). README 5-1 순서대로 콘솔에서 만든다.
 # 팀원이 빠지면 var.developers에서 지우고 apply한다(force_destroy로 키·MFA까지 같이 지운다).
 
 locals {
@@ -46,7 +46,8 @@ resource "aws_iam_account_password_policy" "this" {
 }
 
 # ---------------------------------------------------------------------------
-# 1) MFA 필수: AWS 공식 예시(BlockMostAccessUnlessSignedInWithMFA)를 따른다
+# 1) 콘솔 MFA 필수: AWS 공식 예시(BlockMostAccessUnlessSignedInWithMFA)를 따르되,
+#    조건을 Bool로 둬서 aws:MultiFactorAuthPresent 키가 없는 액세스 키(CLI) 요청은 막지 않는다.
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "require_mfa" {
   statement {
@@ -105,7 +106,7 @@ data "aws_iam_policy_document" "require_mfa" {
     ]
     resources = ["*"]
     condition {
-      test     = "BoolIfExists"
+      test     = "Bool"
       variable = "aws:MultiFactorAuthPresent"
       values   = ["false"]
     }
@@ -115,7 +116,7 @@ data "aws_iam_policy_document" "require_mfa" {
 resource "aws_iam_policy" "require_mfa" {
   name        = "freshlink-require-mfa"
   path        = "/freshlink/"
-  description = "MFA 없이는 비밀번호 변경·MFA 등록 외 모든 요청을 거부한다"
+  description = "MFA 없이 로그인한 콘솔에서는 비밀번호 변경·MFA 등록 외 모든 요청을 거부한다. 액세스 키(CLI)는 막지 않는다"
   policy      = data.aws_iam_policy_document.require_mfa.json
 }
 

@@ -29,7 +29,7 @@
 | 비용 | AWS Budgets `freshlink-monthly`, 비용 이상 탐지 `freshlink-services` | 10월 160 + 11월 200 = 360 USD. 50·80·100%와 예측 100% 초과 시 메일. 크레딧은 빼고 실제 사용 금액으로 본다 |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | 태그 덮어쓰기 금지, push 때 스캔, 최근 30개 보관 |
 | CI 인증 | GitHub OIDC 공급자 | 이 공급자를 믿는 Role은 할 일 10에서 만든다 |
-| 팀원 | IAM 그룹 `freshlink-developers`, 사용자 `freshlink-taewoo`·`freshlink-kyungwoo`·`freshlink-younghoon` | MFA 필수, dev 리소스만 (5장) |
+| 팀원 | IAM 그룹 `freshlink-developers`, 사용자 `freshlink-taewoo`·`freshlink-kyungwoo`·`freshlink-younghoon` | 콘솔 MFA 필수, dev 리소스만 (5장) |
 
 환경마다 하나씩 있는 것 (`envs/<env>/`, 할 일 3·9·15에서 채운다)
 
@@ -81,12 +81,11 @@ infra/
 ├── envs/
 │   ├── dev/{persistent,cluster}/
 │   └── prod/{persistent,cluster}/
-├── modules/
-│   ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
-│   ├── ecr/             # 리포지토리, 보관 개수 정책
-│   ├── network/  eks/  irsa/  rds/  messaging/  frontend/
-│   └── observability/  scheduler/  cognito/
-└── scripts/aws-mfa.*    # 팀원 PC에서 MFA 임시 자격 받기
+└── modules/
+    ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
+    ├── ecr/             # 리포지토리, 보관 개수 정책
+    ├── network/  eks/  irsa/  rds/  messaging/  frontend/
+    └── observability/  scheduler/  cognito/
 ```
 
 새 리소스 위치: 두 환경이 같이 쓰면 `global`, 주말 동안 남아야 하면 `envs/<env>/persistent`, 시간당 과금이고 다시 만들어도 되면 `envs/<env>/cluster`.
@@ -117,140 +116,78 @@ infra/
 
 ## 4. 사용법
 
-모든 명령은 `infra` 레포 폴더(예 `C:\fresh-link\repos\infra`)에서 연 터미널에서 친다. 아래는 Windows PowerShell 기준이고, Git Bash·WSL·macOS용 명령은 각 블록 아래에 따로 적었다. Terraform은 **김진아 관리자 자격으로만** 실행한다. 팀원은 Terraform을 돌리지 않는다(팀원 준비는 5장).
+프로필은 두 가지다. AWS CLI가 액세스 키를 이름 붙여 저장해 두는 칸이 **프로필**이다.
 
-### 4-0. 준비: 설치와 AWS 로그인 (처음 한 번)
+| 프로필 | 누가 | 넣는 키 | 하는 일 |
+| --- | --- | --- | --- |
+| `freshlink-admin` | 김진아 | 새싹 계정 `sesac-c2` 키 (관리자) | `terraform apply`, 팀원 계정 만들기 |
+| `freshlink-dev` | 팀원 3명 | 5-1에서 받은 `freshlink-<이름>` 키 (dev 전용) | 개발 (5-2) |
 
-**1) 도구 설치.** PowerShell을 열고 설치한 뒤, **터미널을 닫았다가 다시 열어야** 명령을 찾는다.
+명령은 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
 
-```powershell
-winget install Hashicorp.Terraform     # 1.11 이상
-winget install Amazon.AWSCLI           # v2
-terraform version
-aws --version
-```
-
-kubectl·Helm은 클러스터 묶음(할 일 9)부터 필요하다. 지금은 없어도 된다.
-
-**2) 관리자 IAM 사용자 만들기 (콘솔).** 루트 계정(가입한 이메일로 로그인하는 계정)으로 Terraform을 돌리지 않는다. 루트 계정 액세스 키는 만들지 않는다.
-
-1. 루트 계정으로 [AWS 콘솔](https://console.aws.amazon.com/)에 로그인한다. 루트 계정에 MFA가 없으면 오른쪽 위 계정 이름 → 보안 자격 증명 → MFA 할당부터 한다.
-2. IAM → 사용자 → 사용자 생성: 이름 `jina-admin`, "AWS Management Console에 대한 사용자 액세스 권한 제공" 체크.
-3. 권한: "직접 정책 연결" → `AdministratorAccess`.
-4. 만든 사용자 → 보안 자격 증명 탭 → MFA 디바이스 할당(인증 앱).
-5. 같은 탭 → 액세스 키 만들기 → 사용 사례 "CLI" → 키 ID와 비밀 액세스 키를 받는다. **비밀 키는 이 화면에서만 보인다.** 채팅·메모장·레포에 붙여 넣지 않고 바로 다음 단계에 입력한다.
-
-이미 관리자 IAM 사용자와 액세스 키가 있으면 2)는 건너뛴다.
-
-**3) PC에 자격 등록.**
+### 4-0. 준비 (김진아, 처음 한 번)
 
 ```powershell
+winget install Hashicorp.Terraform      # 설치 후 터미널을 닫았다 다시 연다
+terraform version                       # 1.11 이상
+
 aws configure --profile freshlink-admin
-#   AWS Access Key ID:     (위에서 받은 키 ID)
-#   AWS Secret Access Key: (위에서 받은 비밀 키)
+#   AWS Access Key ID:     (sesac-c2 액세스 키, 지금 쓰는 것과 같은 키)
+#   AWS Secret Access Key: (sesac-c2 비밀 키)
 #   Default region name:   ap-northeast-2
 #   Default output format: json
+
+aws sts get-caller-identity --profile freshlink-admin   # "user/sesac-c2"가 나오면 성공
 ```
 
-키는 `C:\Users\<사용자>\.aws\credentials`에 저장된다. 이 파일은 레포 밖이라 git에 올라가지 않는다.
+`sesac-c2` 키가 기억나지 않으면 `C:\Users\<사용자>\.aws\credentials` 파일의 `[default]` 칸에 있다.
 
-**4) 이 터미널에서 쓸 프로필을 정하고 로그인 확인.** 새 터미널을 열 때마다 첫 줄을 다시 친다.
+**PowerShell을 새로 열 때마다** 아래 한 줄을 먼저 친다. 그러면 그 창의 `terraform`·`aws` 명령이 모두 관리자 프로필로 돈다.
 
 ```powershell
 $env:AWS_PROFILE = "freshlink-admin"
-aws sts get-caller-identity
 ```
-
-`"Arn": "arn:aws:iam::<계정ID>:user/jina-admin"`처럼 **관리자 사용자**가 나오면 준비 끝이다. `...:root`가 나오면 루트 계정 키를 쓰고 있는 것이니 2)부터 다시 한다. `Unable to locate credentials`가 나오면 3)이 안 된 것이다.
-
-Git Bash에서는 `export AWS_PROFILE=freshlink-admin`.
 
 ### 4-1. 맨 처음 한 번: `global` 만들기
 
-state 버킷이 아직 없으므로 처음에는 로컬 state로 만들고, 버킷이 생기면 state를 버킷으로 옮긴다. **Budgets를 가장 먼저** 만든다. 4-0의 `aws sts get-caller-identity`가 관리자 사용자로 나오는 터미널에서 한다.
-
-**1) 변수 파일 만들기**
+state 버킷이 아직 없어서 처음에는 PC에 state를 두고 만든 뒤, 만들어진 버킷으로 옮긴다.
 
 ```powershell
+$env:AWS_PROFILE = "freshlink-admin"
+
+# 1) 알림 메일 넣기: 열리는 메모장에서 메일 3개를 고치고 저장
 cd global
 Copy-Item terraform.tfvars.example terraform.tfvars
-notepad terraform.tfvars        # alert_emails에 김진아·이태우·김경우 메일 3개를 넣고 저장
-```
+notepad terraform.tfvars
 
-**2) 로컬 state로 시작.** `backend_override.tf`는 `.gitignore`에 있어 커밋되지 않는다.
-
-```powershell
+# 2) 만들기: 목록을 보여 주면 yes 입력 (예산이 먼저 만들어진다)
 Set-Content backend_override.tf "terraform {`n  backend `"local`" {}`n}"
 terraform init
-```
-
-`Terraform has been successfully initialized!`가 나오면 된다.
-
-**3) 예산·이상 탐지 먼저 만들기**
-
-```powershell
 terraform apply -target=module.budget
-```
-
-만들 목록(`Plan: 3 to add` 안팎)이 나오면 이름과 메일 주소를 훑어보고 `yes`를 친다. `-target` 경고는 정상이다.
-
-**4) 나머지 전부 만들기 (state 버킷, ECR, OIDC, 팀원 IAM)**
-
-```powershell
 terraform apply
-terraform output tfstate_bucket   # 예 "freshlink-tfstate-1234"
-```
 
-**5) state를 S3로 옮기기**
-
-```powershell
-cd ..
-Copy-Item backend.hcl.example backend.hcl
-notepad backend.hcl               # bucket 값을 4)의 출력값으로 바꾸고 저장
-Remove-Item global\backend_override.tf
-cd global
-terraform init -migrate-state "-backend-config=../backend.hcl"   # 복사할지 물으면 yes
-```
-
-**6) S3에 올라갔는지 확인하고 로컬 사본 지우기**
-
-```powershell
-aws s3 ls s3://freshlink-tfstate-1234/global/   # 4)의 버킷 이름. terraform.tfstate가 보여야 한다
-terraform plan                                  # "No changes."가 나와야 한다
+# 3) state를 S3로 옮기기: 물으면 yes
+$bucket = terraform output -raw tfstate_bucket
+Set-Content ..\backend.hcl "bucket = `"$bucket`""
+Remove-Item backend_override.tf
+terraform init -migrate-state "-backend-config=../backend.hcl"
 Remove-Item terraform.tfstate, terraform.tfstate.backup -ErrorAction SilentlyContinue
 ```
 
-**7) 잠금 파일 커밋.** `global/.terraform.lock.hcl`이 새로 생긴다. 다른 OS 해시도 넣어서 커밋한다.
-
-```powershell
-terraform providers lock -platform=windows_amd64 -platform=linux_amd64 -platform=darwin_arm64
-cd ..
-git add global/.terraform.lock.hcl
-git commit -m "chore(I-01): global provider 잠금 파일 추가"
-git push
-```
-
-Git Bash에서는 1)·2)·5)·6)을 다음처럼 바꾼다.
-
-```bash
-cp terraform.tfvars.example terraform.tfvars
-printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
-cp ../backend.hcl.example ../backend.hcl && rm backend_override.tf
-rm -f terraform.tfstate terraform.tfstate.backup
-```
+마지막에 `terraform plan`이 `No changes.`를 보이면 끝이다. 새로 생긴 `global/.terraform.lock.hcl`은 커밋한다.
 
 자주 나는 오류
 
-| 오류 | 원인과 해결 |
+| 오류 | 해결 |
 | --- | --- |
-| `No valid credential sources found`, `ExpiredToken` | 이 터미널에 `$env:AWS_PROFILE`이 없다. 4-0의 4)를 다시 친다 |
-| 비용 이상 탐지에서 `LimitExceeded` | AWS가 자동으로 만든 서비스 모니터(`Default-Services-Monitor`)가 이미 있다. `aws ce get-anomaly-monitors`로 확인하고 콘솔(Billing → 비용 이상 탐지)에서 지운 뒤 다시 apply |
-| `BucketAlreadyExists` | 버킷 이름이 다른 계정과 겹쳤다. 거의 없는 일이며, 생기면 알린다 |
-| `Error acquiring the state lock` | 다른 터미널에서 같은 루트를 돌리고 있다. 끝난 뒤 다시 한다 |
+| `The config profile (freshlink-admin) could not be found` | 4-0의 `aws configure --profile freshlink-admin`을 아직 안 했다 |
+| `No valid credential sources found` | 이 창에서 `$env:AWS_PROFILE = "freshlink-admin"`을 안 쳤다 |
+| 비용 이상 탐지에서 `LimitExceeded` | 콘솔 Billing → 비용 이상 탐지에서 기존 모니터를 지우고 다시 `terraform apply` |
+| `Error acquiring the state lock` | 다른 터미널에서 같은 폴더를 돌리고 있다. 끝난 뒤 다시 한다 |
 
 ### 4-2. 그 다음부터 (모든 루트)
 
-4-0의 4)로 관리자 프로필을 고른 터미널에서 한다.
+`$env:AWS_PROFILE = "freshlink-admin"`을 친 창에서 한다.
 
 ```bash
 terraform -chdir=global init -backend-config=../backend.hcl
@@ -278,13 +215,13 @@ terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초�
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
-| 사용자 | 팀원 |
+| IAM 사용자 | 팀원 |
 | --- | --- |
 | `freshlink-taewoo` | 이태우 |
 | `freshlink-kyungwoo` | 김경우 |
 | `freshlink-younghoon` | 문영훈 |
 
-권한은 dev 리소스만이다. prod는 읽기 권한도 없다(허용 문장이 없어 기본 거부).
+`global` apply가 위 사용자 3명과 그룹을 만든다. 권한은 dev 리소스만이고 prod는 읽기 권한도 없다. 팀원의 새싹 계정(`sesac-cN`)은 관리자 권한이라, 개발할 때는 이 계정(`freshlink-dev` 프로필)을 쓴다.
 
 | 허용 | 범위 |
 | --- | --- |
@@ -293,42 +230,42 @@ terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초�
 | Cognito User Pool·사용자·그룹 조회 | 태그 `Environment=dev`인 User Pool |
 | SSM 포트 포워딩 세션 시작·종료 | 태그 `Environment=dev`인 인스턴스. 셸 세션은 안 된다 |
 | CloudWatch Logs 읽기·Logs Insights | 이름에 `freshlink-dev-`가 들어간 로그 그룹 |
-| 본인 비밀번호·액세스 키·MFA 관리 | 본인 사용자만 |
+| 본인 비밀번호·액세스 키·MFA 기기 관리 | 본인 사용자만 |
 
 CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List*`)은 리소스 단위로 좁힐 수 없어 prod까지 보이게 되므로 주지 않았다. 지표와 로그는 dev Grafana로 본다. 이름과 태그 규칙은 [`envs/README.md`](envs/README.md)에 있다.
 
-### 5-1. 계정 전달 (김진아)
+### 5-1. 계정 만들어 주기 (김진아, `global` apply 뒤 한 번)
 
-콘솔 비밀번호와 액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). `global` apply 뒤, 4-0의 관리자 프로필 터미널에서 사람마다 한 번 실행한다.
+콘솔 비밀번호와 액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). `sesac-c2`로 [AWS 콘솔](https://console.aws.amazon.com/)에 로그인해서 사람마다(`freshlink-taewoo`, `freshlink-kyungwoo`, `freshlink-younghoon`) 아래를 한 번씩 한다.
 
-```powershell
-aws iam create-login-profile --user-name freshlink-taewoo --password "<임시 비밀번호>" --password-reset-required
-aws iam create-login-profile --user-name freshlink-kyungwoo --password "<임시 비밀번호>" --password-reset-required
-aws iam create-login-profile --user-name freshlink-younghoon --password "<임시 비밀번호>" --password-reset-required
-```
+1. **로그인 주소 확인**: IAM → 대시보드 오른쪽 "AWS 계정" 칸의 **로그인 URL**을 적어 둔다(세 사람 공통).
+2. **콘솔 비밀번호**: IAM → 사용자 → `freshlink-<이름>` → **보안 자격 증명** 탭 → "콘솔 로그인" 칸의 **콘솔 액세스 활성화** → "자동 생성된 암호" 선택, **"사용자는 다음 로그인 시 새 암호를 생성해야 합니다" 체크** → 콘솔 액세스 활성화 → 나온 암호를 **표시**해서 적어 둔다.
+3. **액세스 키**: 같은 보안 자격 증명 탭 → "액세스 키" 칸의 **액세스 키 만들기** → 사용 사례 **명령줄 인터페이스(CLI)** 선택, 아래 확인란 체크 → 다음 → 액세스 키 만들기 → **액세스 키**와 **비밀 액세스 키**를 적어 둔다(또는 .csv 파일 다운로드).
 
-임시 비밀번호는 사람마다 다르게, 14자 이상에 대문자·소문자·숫자·기호를 섞는다(계정 비밀번호 정책). 명령 기록에 남지 않게 하려면 콘솔(IAM → 사용자 → 보안 자격 증명 → 콘솔 액세스 활성화, "다음 로그인 시 비밀번호 재설정" 체크)에서 만들어도 된다.
+로그인 URL, 사용자 이름, 비밀번호, 액세스 키, 비밀 액세스 키를 **사람마다 직접 전달**한다(채팅방·레포에 붙여 넣지 않는다). 비밀 액세스 키는 3)의 화면에서만 볼 수 있다. 잃어버리면 그 사람의 보안 자격 증명 탭에서 옛 키를 비활성화·삭제하고 3)을 다시 한다.
 
-계정 ID(로그인 주소), 사용자 이름, 임시 비밀번호는 **채팅이나 레포에 붙여 넣지 않고 직접 전달**한다.
-
-### 5-2. 처음 로그인 (팀원)
-
-1. `https://<계정ID>.signin.aws.amazon.com/console`에 로그인하고 새 비밀번호로 바꾼다.
-2. 오른쪽 위 이름 → 보안 자격 증명 → MFA 디바이스 할당(인증 앱). **이 전에는 다른 것이 모두 거부된다.**
-3. 로그아웃 후 MFA로 다시 로그인하고, 같은 화면에서 액세스 키를 만든다(용도: CLI).
-4. PC에서 키를 등록하고 MFA 임시 자격을 받는다. 임시 자격은 12시간 유효하니 아침마다 다시 받는다.
+### 5-2. 팀원 PC 설정 (팀원, 한 번)
 
 ```powershell
-aws configure --profile freshlink                       # 액세스 키, 리전 ap-northeast-2
-powershell -ExecutionPolicy Bypass -File scripts\aws-mfa.ps1   # Git Bash·WSL은 ./scripts/aws-mfa.sh
-aws sts get-caller-identity --profile freshlink-dev
+aws configure --profile freshlink-dev
+#   AWS Access Key ID:     (받은 액세스 키)
+#   AWS Secret Access Key: (받은 비밀 키)
+#   Default region name:   ap-northeast-2
+#   Default output format: json
+
+aws sts get-caller-identity --profile freshlink-dev    # "user/freshlink/freshlink-<이름>"이 나오면 성공
 ```
 
-IntelliJ나 Gradle로 서비스를 띄울 때는 환경 변수 `AWS_PROFILE=freshlink-dev`를 준다.
+- AWS 명령에는 `--profile freshlink-dev`를 붙인다. 매번 붙이기 싫으면 그 창에서 먼저 `$env:AWS_PROFILE = "freshlink-dev"`를 친다.
+- IntelliJ에서 서비스를 띄울 때는 실행 설정의 환경 변수에 `AWS_PROFILE=freshlink-dev`를 넣는다.
+- CLI는 MFA 없이 액세스 키만으로 된다.
+- 콘솔은 받은 주소와 비밀번호로 들어가 새 비밀번호로 바꾼 뒤, 오른쪽 위 이름 → 보안 자격 증명에서 MFA를 등록한다. **콘솔은 MFA를 등록하기 전에는 다른 것이 모두 거부된다.**
 
 ### 5-3. 확인 (할 일 2 완료 기준)
 
-```bash
+팀원 PC에서 친다.
+
+```powershell
 aws sts get-caller-identity --profile freshlink-dev                                   # 성공해야 한다
 aws sqs get-queue-url --queue-name prod-inventory-results --profile freshlink-dev     # AccessDenied여야 한다
 aws sqs get-queue-url --queue-name dev-inventory-results --profile freshlink-dev      # 할 일 3 이후 성공
@@ -338,7 +275,7 @@ prod 큐가 아직 없어도 권한 검사가 먼저라 `AccessDenied`가 나온
 
 ### 5-4. 팀원이 빠질 때
 
-`global/variables.tf`의 `developers`에서 지우고 apply한다. 액세스 키·MFA·로그인 프로필까지 같이 지워진다.
+`global/variables.tf`의 `developers`에서 지우고 apply한다. 액세스 키·로그인 프로필까지 같이 지워진다.
 
 ## 6. 이름 규칙
 
