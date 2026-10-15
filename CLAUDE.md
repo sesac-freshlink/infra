@@ -46,7 +46,8 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 팀원 IAM 그룹 `freshlink-developers`는 dev 리소스만 쓴다. prod는 읽기 권한도 없다.
 - 할 일 2에서 정한 것: state 키 `<루트>/terraform.tfstate`(예 `dev/persistent/terraform.tfstate`), 잠금은 S3 잠금 파일(`use_lockfile`, DynamoDB 없음), 버킷 이름은 레포 루트 `backend.hcl`(커밋 안 함)로 `-backend-config`에 넘김, state 버킷·Budgets·팀원 IAM은 `global`.
 - 팀원 IAM 권한은 이름·태그로 dev를 가려낸다: 큐 `dev-*`, 비밀 `freshlink-dev-*`, Cognito·SSM 인스턴스는 태그 `Environment=dev`(provider `default_tags`), 로그 그룹 이름에 `freshlink-dev-`. 이 규칙을 어기는 이름을 만들지 않는다.
-- 정하지 않은 값은 지어내지 않는다: 개발자별 큐 이름·`QUEUE_PREFIX` 형식(할 일 3·4), IRSA Role을 두는 묶음(할 일 9), OIDC Role 이름·개수·권한 범위(할 일 10), 스케줄 워크플로가 쓰는 Role(할 일 9·10), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
+- 할 일 3에서 정한 것: 개발자별 큐는 `<env>-<아이디>-inventory-commands.fifo` 등(`QUEUE_PREFIX` `<env>-<아이디>-`), DLQ `...-dlq(.fifo)`, maxReceiveCount 3. 앱 DB 비밀 `freshlink-<env>-<서비스>-db`(JSON host·port·dbname·username·password), 스키마 `member`·`inventory`·`orders`, 사용자 `*_app`.
+- 정하지 않은 값은 지어내지 않는다: IRSA Role을 두는 묶음(할 일 9), OIDC Role 이름·개수·권한 범위(할 일 10), 스케줄 워크플로가 쓰는 Role(할 일 9·10), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
 
 ---
 
@@ -57,7 +58,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 | IaC | Terraform, AWS provider (ap-northeast-2, AZ 2a·2c) |
 | 상태 | S3 `freshlink-tfstate-<계정ID 끝 4자리>`, 키 5개 `global`, `dev/persistent`, `dev/cluster`, `prod/persistent`, `prod/cluster` (+ `/terraform.tfstate`), S3 잠금 파일(`use_lockfile`) |
 | 컴퓨팅 | 환경마다 EKS `freshlink-<env>-eks`, 관리형 노드 그룹 t3.large × 2 (최대 3) |
-| 데이터·메시징 | 환경마다 RDS MySQL 8.0 db.t4g.small(`freshlink-<env>-mysql`)과 SSM 접속용 t4g.nano, SQS `<env>-inventory-commands.fifo`·`<env>-inventory-results`·DLQ 2개(dev는 개발자별 큐 추가) |
+| 데이터·메시징 | 환경마다 RDS MySQL 8.4 db.t4g.small(`freshlink-<env>-mysql`)과 SSM 접속용 t4g.nano(public-a, 공인 IP, 인바운드 없음. NAT 없이 SSM에 닿게), SQS `<env>-inventory-commands.fifo`·`<env>-inventory-results`·DLQ 2개(dev는 개발자별 큐 추가) |
 | 프론트 | 환경마다 S3 + CloudFront(OAC) + ACM(us-east-1) |
 | 인증 | 환경마다 Cognito User Pool `freshlink-<env>-users` (그룹 OWNER·CUSTOMER, `custom:storeId`) |
 | 비밀 | Secrets Manager + External Secrets Operator |

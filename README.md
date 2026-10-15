@@ -36,7 +36,7 @@
 | 구분 | 리소스 | 크기 |
 | --- | --- | --- |
 | 컴퓨팅 | EKS `freshlink-<env>-eks` + 관리형 노드 그룹 | t3.large × 2 (최대 3) |
-| DB | RDS MySQL 8.0 `freshlink-<env>-mysql` + SSM 접속용 t4g.nano | db.t4g.small, gp3 20 GiB, 단일 AZ, 스키마 3개 |
+| DB | RDS MySQL 8.4 `freshlink-<env>-mysql` + SSM 접속용 t4g.nano(public-a, 인바운드 없음) | db.t4g.small, gp3 20 GiB, 단일 AZ, 스키마 3개 |
 | 메시징 | SQS `<env>-inventory-commands.fifo`, `<env>-inventory-results` + DLQ 2개 (dev는 개발자별 큐 추가) | 3번 실패 시 DLQ |
 | 네트워크 | VPC(dev `10.0.0.0/16`, prod `10.1.0.0/16`), 서브넷 6개, NAT 1개, S3 Gateway 엔드포인트 | 앱 서브넷 /20 |
 | 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function + ACM(us-east-1) | |
@@ -62,13 +62,14 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 
 | 시각 | 작업 | 도구 |
 | --- | --- | --- |
-| 월 08:40 | 클러스터 묶음 생성(노드 2대 포함) + RDS 시작 | GitHub Actions |
+| 월 08:40 | 클러스터 묶음 생성(노드 2대 포함) | GitHub Actions |
+| 월~금 09:00 | RDS·nano 시작 | EventBridge Scheduler |
 | 화~금 09:00 | NAT 생성 | GitHub Actions |
-| 화~금 09:00 / 09:10 | RDS·nano 시작 / 노드 그룹 desired 2 | EventBridge Scheduler |
+| 화~금 09:10 | 노드 그룹 desired 2 | EventBridge Scheduler |
 | 월~목 21:00 | 노드 그룹 desired 0 (+ 월~금 RDS·nano 중지) | EventBridge Scheduler |
 | 월~목 21:10 | NAT 삭제 | GitHub Actions |
 | 금 21:00 | 클러스터 묶음 삭제 | GitHub Actions |
-| 매일 23:00 | 안전 끄기: RDS 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / GitHub Actions |
+| 매일 23:00 | 안전 끄기: RDS·nano 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / GitHub Actions |
 
 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 
@@ -77,6 +78,7 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 ```
 infra/
 ├── backend.hcl.example  # state 버킷 이름. backend.hcl로 복사해서 쓴다 (커밋 안 함)
+├── scripts/             # PowerShell: DB 포트 포워딩, 스키마·앱 사용자 만들기, 토스 키 넣기 (4-4)
 ├── global/              # 두 환경 공용 루트 (state 버킷, Budgets, ECR, OIDC, 팀원 IAM)
 ├── envs/
 │   ├── dev/{persistent,cluster}/
@@ -84,8 +86,12 @@ infra/
 └── modules/
     ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
     ├── ecr/             # 리포지토리, 보관 개수 정책
-    ├── network/  eks/  irsa/  rds/  messaging/  frontend/
-    └── observability/  scheduler/  cognito/
+    ├── network/         # VPC, 서브넷 6개(EKS 태그), IGW, 라우팅, S3 Gateway 엔드포인트 (NAT는 cluster 묶음)
+    ├── rds/             # RDS MySQL 8.4, 보안 그룹, 앱 DB 비밀 3개, SSM 접속용 nano
+    ├── scheduler/       # EventBridge Scheduler 켜고 끄기
+    ├── messaging/       # SQS 공용 세트 + 개발자별 세트 (각 FIFO·표준·DLQ 2개)
+    ├── eks/  irsa/  frontend/
+    └── observability/  cognito/
 ```
 
 새 리소스 위치: 두 환경이 같이 쓰면 `global`, 주말 동안 남아야 하면 `envs/<env>/persistent`, 시간당 과금이고 다시 만들어도 되면 `envs/<env>/cluster`.
@@ -99,8 +105,9 @@ infra/
 
 ## 할 일: 켜고 끄기 (I-09)
 
-- [ ] `modules/scheduler` (`envs/<env>/persistent`): `aws_scheduler_schedule` 일정 6개, 시간대 `Asia/Seoul`, universal target `aws-sdk:rds:startDBInstance`·`stopDBInstance`, `aws-sdk:eks:updateNodegroupConfig`
-- [ ] 스케줄러 IAM Role: `freshlink-<env>-mysql`과 노드 그룹에 대한 `rds:StartDBInstance`·`rds:StopDBInstance`·`eks:UpdateNodegroupConfig`만
+- [x] `modules/scheduler` (`envs/<env>/persistent`, 할 일 3): RDS·nano 일정 6개(평일 09:00 켜기, 평일 21:00 끄기, 매일 23:00 안전 끄기), 시간대 `Asia/Seoul`, universal target `aws-sdk:rds:startDBInstance`·`stopDBInstance`·`ec2:startInstances`·`stopInstances`
+- [x] 스케줄러 IAM Role `freshlink-<env>-scheduler-role`: `freshlink-<env>-mysql`과 nano 한 대에 대한 시작·중지만
+- [ ] 노드 그룹 일정(화~금 09:10 desired 2, 월~목 21:00·매일 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 9)
 - [ ] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
 - [ ] GitHub Actions: 월 클러스터 생성, 화~금 NAT 생성, 월~목 NAT 삭제, 금 클러스터 삭제, 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch)
 
@@ -214,6 +221,139 @@ terraform -chdir=global apply      # freshlink-alert-test 예산(1 USD, 1% 초�
 ```
 
 이번 달 실제 사용 금액이 0.01 USD를 넘으면 네 사람에게 메일이 간다. Budgets는 하루 몇 번만 평가하므로 메일까지 몇 시간 걸릴 수 있다. 네 사람이 메일을 받으면 `budget_test_alert = false`로 돌리고 다시 apply해서 시험 예산을 지운다.
+
+### 4-4. dev 유지 묶음 만들기 (할 일 3, 김진아)
+
+`envs/dev/persistent` apply 한 번으로 아래 64개 리소스가 생긴다. RDS가 뜨는 데 10~15분 걸린다.
+
+| 구분 | 이름 | 비고 |
+| --- | --- | --- |
+| 네트워크 | VPC `freshlink-dev-vpc` `10.0.0.0/16`, 서브넷 6개, IGW, 라우팅 테이블 3개, S3 Gateway 엔드포인트 | NAT는 없다(할 일 9 cluster 묶음). db 서브넷은 인터넷 경로가 없다 |
+| DB | RDS `freshlink-dev-mysql` (MySQL 8.4, db.t4g.small, 단일 AZ) | 관리자 `freshlink_admin`, 비밀번호는 RDS가 만든 비밀 `rds!db-...`에 있다(팀원은 못 읽는다) |
+| DB 접속 | EC2 `freshlink-dev-ssm-access` (t4g.nano, public-a, 인바운드 없음) | SSM 포트 포워딩 통로. NAT가 없을 때도 되도록 공인 IP를 붙였다 |
+| 비밀 | `freshlink-dev-member-db`, `freshlink-dev-inventory-db`, `freshlink-dev-order-db`, `freshlink-dev-toss` | 앱 DB 비밀번호는 apply가 만들어 넣는다(state에 남지 않음). 토스 키는 아래 4에서 넣는다 |
+| 큐 | 공용 `dev-`, 개인 `dev-taewoo-`, `dev-kyungwoo-` 세트마다 `inventory-commands.fifo`·`inventory-commands-dlq.fifo`·`inventory-results`·`inventory-results-dlq` | 3번 받고도 처리 못 한 쪽지는 DLQ로 |
+| 켜고 끄기 | 일정 그룹 `freshlink-dev`: RDS·nano 평일 09:00 켜기, 평일 21:00 끄기, 매일 23:00 안전 끄기 | 한국 시각 |
+
+| 스키마 | DB 사용자 | 비밀 | 담당 |
+| --- | --- | --- | --- |
+| `member` | `member_app` | `freshlink-dev-member-db` | 김경우 |
+| `inventory` | `inventory_app` | `freshlink-dev-inventory-db` | 이태우 |
+| `orders` | `order_app` | `freshlink-dev-order-db` | 김경우 |
+
+**준비 (처음 한 번).** PowerShell에서 두 프로그램을 설치하고, **창을 닫았다가 새로 연다**(그래야 명령이 잡힌다).
+
+```powershell
+winget install --id Amazon.SessionManagerPlugin -e    # SSM 포트 포워딩에 필요
+winget install --id Oracle.MySQLShell -e              # SQL 실행용 (mysqlsh)
+
+# 새 창에서 확인
+session-manager-plugin    # "The Session Manager plugin was installed successfully"가 나오면 성공
+mysqlsh --version         # "mysqlsh   Ver 9..."가 나오면 성공
+```
+
+**1) 만들기.** `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform -chdir=envs/dev/persistent init -backend-config=../../../backend.hcl
+#   "Terraform has been successfully initialized!"가 나오면 성공
+terraform -chdir=envs/dev/persistent apply
+#   "Plan: 64 to add, 0 to change, 0 to destroy."를 보고 yes 입력
+#   10~15분 뒤 "Apply complete! Resources: 64 added"가 나오면 성공
+```
+
+**2) 포트 포워딩 (창 2).** PowerShell 창을 하나 더 열고 친다. 이 창은 3)이 끝날 때까지 닫지 않는다.
+
+```powershell
+cd C:\fresh-link\repos\infra
+$env:AWS_PROFILE = "freshlink-admin"
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1
+#   "Waiting for connections..."가 나오면 성공
+```
+
+**3) 스키마 3개·앱 사용자 3개 만들기 (창 1).** 처음 창으로 돌아와 친다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\db-init.ps1
+#   마지막에 inventory, member, orders 세 줄과 inventory_app, member_app, order_app 세 줄이 나오면 성공
+```
+
+끝나면 창 2에서 `Ctrl+C`로 포트 포워딩을 끈다. 여러 번 돌려도 된다(있으면 건너뛰고 비밀번호만 비밀 값으로 다시 맞춘다).
+
+**4) 토스 테스트 키 넣기.** 토스페이먼츠 개발자센터의 테스트 키 두 개(`test_ck_...`, `test_sk_...`)를 물으면 붙여 넣는다. 키가 아직 없으면 나중에 한다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1
+#   "완료: freshlink-dev-toss 에 테스트 키를 넣었다."가 나오면 성공
+```
+
+**5) 팀원에게 줄 값.** 아래 두 값을 이태우·김경우에게 전달한다(비밀번호는 팀원이 직접 꺼낸다).
+
+```powershell
+terraform -chdir=envs/dev/persistent output -raw ssm_access_instance_id; ""   # i-로 시작
+terraform -chdir=envs/dev/persistent output -raw db_address; ""               # freshlink-dev-mysql....rds.amazonaws.com
+```
+
+**6) 21:00에 꺼지는지 확인.** 21:00이 지나고 친다.
+
+```powershell
+aws rds describe-db-instances --db-instance-identifier freshlink-dev-mysql --query "DBInstances[0].DBInstanceStatus" --output text
+#   "stopping" 또는 "stopped"면 성공
+aws scheduler list-schedules --group-name freshlink-dev --query "Schedules[].Name" --output table   # 일정 6개
+```
+
+**꺼진 시간에 쓰려면** (21:00 이후·주말). 켜는 데 RDS 5~10분이 걸리고, 23:00 안전 끄기가 다시 끈다.
+
+```powershell
+aws rds start-db-instance --db-instance-identifier freshlink-dev-mysql --query "DBInstance.DBInstanceStatus" --output text
+aws ec2 start-instances --instance-ids (terraform -chdir=envs/dev/persistent output -raw ssm_access_instance_id) --query "StartingInstances[0].CurrentState.Name" --output text
+```
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| 포트 포워딩 `TargetNotConnected` | nano가 꺼져 있거나 막 켜졌다. 위 "꺼진 시간에 쓰려면"으로 켜고 2~3분 뒤 다시 한다 |
+| `SessionManagerPlugin is not found` | 준비 단계 설치 뒤 창을 새로 열지 않았다 |
+| `db-init.ps1` `Can't connect to MySQL server` | 창 2 포트 포워딩이 꺼져 있거나 RDS가 꺼져 있다(`DBInstanceStatus`가 `available`이어야 한다) |
+| apply `InvalidParameterCombination ... 8.4` | 서울 리전에 8.4 기본 버전이 없을 때다. 오류 문구를 그대로 스레드에 붙여 넣는다 |
+
+#### 팀원 확인 (할 일 3 완료 기준)
+
+이태우·김경우가 각자 PC에서 한다. 5-2를 마쳐 `freshlink-dev` 프로필이 있어야 한다. 준비 단계의 두 프로그램 설치도 같다. `<인스턴스 ID>`·`<DB 주소>`는 김진아가 5)에서 준 값이다.
+
+창 1 (포트 포워딩, 열어 둔다):
+
+```powershell
+aws ssm start-session --profile freshlink-dev --target <인스턴스 ID> --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters "host=<DB 주소>,portNumber=3306,localPortNumber=3306"
+#   "Waiting for connections..."가 나오면 성공
+```
+
+창 2 (DB 접속과 큐). 이태우는 `inventory`, 김경우는 `member`(같은 방법으로 `order`도)를 쓴다. 아래는 이태우 예시다.
+
+```powershell
+# 내 DB 비밀번호 보기 ("password" 값)
+aws secretsmanager get-secret-value --secret-id freshlink-dev-inventory-db --query SecretString --output text --profile freshlink-dev
+
+# 접속: 물으면 위 비밀번호를 붙여 넣는다. 저장할지 물으면 N
+mysqlsh --sql --host=127.0.0.1 --port=3306 --user=inventory_app --schema=inventory -e "SHOW DATABASES;"
+#   inventory(와 information_schema·performance_schema)만 보이면 성공
+
+# 내 큐로 쪽지 보내고 받기
+$q = aws sqs get-queue-url --queue-name dev-taewoo-inventory-results --query QueueUrl --output text --profile freshlink-dev
+aws sqs send-message --queue-url $q --message-body "hello" --profile freshlink-dev
+aws sqs receive-message --queue-url $q --query "Messages[0].Body" --output text --profile freshlink-dev
+#   "hello"가 나오면 성공
+
+# FIFO 큐는 그룹 ID와 중복 제거 ID가 필요하다
+$f = aws sqs get-queue-url --queue-name dev-taewoo-inventory-commands.fifo --query QueueUrl --output text --profile freshlink-dev
+aws sqs send-message --queue-url $f --message-body "hello-fifo" --message-group-id 1 --message-deduplication-id (Get-Random) --profile freshlink-dev
+aws sqs receive-message --queue-url $f --query "Messages[0].Body" --output text --profile freshlink-dev
+```
+
+김경우는 `freshlink-dev-member-db`·`member_app`·`member`, `dev-kyungwoo-...` 큐로 바꿔 친다. 서비스 실행 설정은 `QUEUE_PREFIX=dev-taewoo-`(또는 `dev-kyungwoo-`), `DB_URL=jdbc:mysql://127.0.0.1:3306/inventory`처럼 준다(할 일 4 접속 가이드에서 정리).
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
