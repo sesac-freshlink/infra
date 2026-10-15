@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not (Get-Command mysqlsh -ErrorAction SilentlyContinue)) {
-    throw "mysqlsh가 없다. 'winget install --id Oracle.MySQLShell -e' 뒤 PowerShell 창을 새로 연다."
+    throw "mysqlsh가 없다. 'winget install --id Oracle.MySQLShell -e --source winget' 뒤 PowerShell 창을 새로 연다."
 }
 
 $tfDir = Join-Path (Split-Path $PSScriptRoot -Parent) "envs\$Env\persistent"
