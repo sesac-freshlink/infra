@@ -236,13 +236,36 @@ CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List
 
 ### 5-1. 계정 만들어 주기 (김진아, `global` apply 뒤 한 번)
 
-콘솔 비밀번호와 액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). `sesac-c2`로 [AWS 콘솔](https://console.aws.amazon.com/)에 로그인해서 사람마다(`freshlink-taewoo`, `freshlink-kyungwoo`, `freshlink-younghoon`) 아래를 한 번씩 한다.
+`global` apply는 사용자 3명만 만들고, 로그인 비밀번호와 액세스 키는 만들지 않는다. Terraform으로 만들면 비밀 값이 state 파일에 남기 때문이다. 그래서 이 두 가지는 apply 뒤에 아래 명령으로 한 번 만든다.
 
-1. **로그인 주소 확인**: IAM → 대시보드 오른쪽 "AWS 계정" 칸의 **로그인 URL**을 적어 둔다(세 사람 공통).
-2. **콘솔 비밀번호**: IAM → 사용자 → `freshlink-<이름>` → **보안 자격 증명** 탭 → "콘솔 로그인" 칸의 **콘솔 액세스 활성화** → "자동 생성된 암호" 선택, **"사용자는 다음 로그인 시 새 암호를 생성해야 합니다" 체크** → 콘솔 액세스 활성화 → 나온 암호를 **표시**해서 적어 둔다.
-3. **액세스 키**: 같은 보안 자격 증명 탭 → "액세스 키" 칸의 **액세스 키 만들기** → 사용 사례 **명령줄 인터페이스(CLI)** 선택, 아래 확인란 체크 → 다음 → 액세스 키 만들기 → **액세스 키**와 **비밀 액세스 키**를 적어 둔다(또는 .csv 파일 다운로드).
+`$env:AWS_PROFILE = "freshlink-admin"`을 친 PowerShell에서 **한 사람씩** 친다. 아래는 이태우(`freshlink-taewoo`) 예시이고, 김경우는 `freshlink-kyungwoo`, 문영훈은 `freshlink-younghoon`으로 이름만 바꿔 같은 두 줄을 다시 친다.
 
-로그인 URL, 사용자 이름, 비밀번호, 액세스 키, 비밀 액세스 키를 **사람마다 직접 전달**한다(채팅방·레포에 붙여 넣지 않는다). 비밀 액세스 키는 3)의 화면에서만 볼 수 있다. 잃어버리면 그 사람의 보안 자격 증명 탭에서 옛 키를 비활성화·삭제하고 3)을 다시 한다.
+```powershell
+# 0) 로그인 주소 (세 사람 공통, 처음 한 번만)
+$acct = aws sts get-caller-identity --query Account --output text
+"https://$acct.signin.aws.amazon.com/console"
+
+# 1) 콘솔 비밀번호 만들기
+aws iam create-login-profile --user-name freshlink-taewoo --password "<임시 비밀번호>" --password-reset-required
+
+# 2) CLI용 액세스 키 만들기
+aws iam create-access-key --user-name freshlink-taewoo --query "AccessKey.[AccessKeyId,SecretAccessKey]" --output text
+```
+
+각 줄이 하는 일
+
+| 줄 | 하는 일 | 화면에 나오는 것 |
+| --- | --- | --- |
+| 0) `aws sts get-caller-identity ...` | 지금 계정의 12자리 번호를 `$acct`에 담는다 | 없음 |
+| 0) `"https://$acct..."` | 그 번호로 팀원이 들어갈 콘솔 로그인 주소를 만든다 | `https://123456789012.signin.aws.amazon.com/console` 같은 주소 |
+| 1) `create-login-profile` | 그 사용자에게 콘솔 비밀번호를 준다. `--password-reset-required` 때문에 팀원은 첫 로그인 때 자기 비밀번호로 바꿔야 한다 | JSON 몇 줄(성공 표시). 비밀번호는 다시 보여 주지 않는다 |
+| 2) `create-access-key` | 그 사용자의 CLI용 키를 만든다 | 한 줄에 두 값: 앞이 **액세스 키**(`AKIA...`), 뒤가 **비밀 키** |
+
+- `<임시 비밀번호>`는 사람마다 다르게 직접 정해서 넣는다. 계정 비밀번호 정책 때문에 **14자 이상, 대문자·소문자·숫자·기호를 모두** 넣어야 한다(예 형식 `Fresh-Link-2026!a`). 규칙에 안 맞으면 `PasswordPolicyViolation` 오류가 나니 바꿔서 다시 친다.
+- 2)의 **비밀 키는 이 화면에서 한 번만** 볼 수 있다. 바로 그 사람에게 줄 메모에 옮긴다.
+- 사람마다 **로그인 주소, 사용자 이름, 임시 비밀번호, 액세스 키, 비밀 키** 다섯 가지를 직접 전달한다(채팅방·레포에 붙여 넣지 않는다).
+- 이미 만든 사람에게 1)을 다시 치면 `EntityAlreadyExists`가 난다. 비밀번호를 다시 정하려면 `create-login-profile` 대신 `update-login-profile`로 친다.
+- 비밀 키를 잃어버리면 `aws iam list-access-keys --user-name <사용자>`로 옛 키 ID를 보고 `aws iam delete-access-key --user-name <사용자> --access-key-id <옛 키 ID>`로 지운 뒤 2)를 다시 친다(한 사람당 키는 2개까지).
 
 ### 5-2. 팀원 PC 설정 (팀원, 한 번)
 

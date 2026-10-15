@@ -1,7 +1,7 @@
 # 팀원 IAM 사용자와 그룹 freshlink-developers.
 # - 콘솔은 MFA를 켜기 전에는 비밀번호 바꾸기·MFA 등록 말고는 아무것도 못 한다. CLI는 액세스 키 하나로 바로 쓴다(MFA 강제 없음).
 # - 권한은 dev 리소스만. prod 리소스는 읽기 권한도 없다(허용 문장이 없으면 기본 거부).
-# - 콘솔 비밀번호·액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). README 5-1 순서대로 콘솔에서 만든다.
+# - 콘솔 비밀번호·액세스 키는 Terraform으로 만들지 않는다(state에 비밀이 남지 않게). README 5-1 명령으로 만든다.
 # 팀원이 빠지면 var.developers에서 지우고 apply한다(force_destroy로 키·MFA까지 같이 지운다).
 
 locals {
