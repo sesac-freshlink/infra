@@ -1,5 +1,13 @@
 locals {
   months = sort(keys(var.monthly_limits))
+
+  # AWS는 planned_limit을 첫 달부터 12개월치 요구한다. 첫 달부터 12개월을 만들고,
+  # monthly_limits에 없는 달은 마지막 달 금액으로 채운다(프로젝트가 끝난 뒤 달도 알림은 계속 온다).
+  start_year     = tonumber(substr(local.months[0], 0, 4))
+  start_month    = tonumber(substr(local.months[0], 5, 2))
+  planned_months = [for i in range(12) : format("%04d-%02d", local.start_year + floor((local.start_month - 1 + i) / 12), (local.start_month - 1 + i) % 12 + 1)]
+  last_limit     = var.monthly_limits[local.months[length(local.months) - 1]]
+  planned_limits = { for m in local.planned_months : m => lookup(var.monthly_limits, m, local.last_limit) }
 }
 
 # 계정 전체 월 예산. 월마다 금액이 달라서 planned_limit으로 나눈다.
@@ -10,7 +18,7 @@ resource "aws_budgets_budget" "monthly" {
   time_period_start = "${local.months[0]}-01_00:00"
 
   dynamic "planned_limit" {
-    for_each = var.monthly_limits
+    for_each = local.planned_limits
     content {
       start_time = "${planned_limit.key}-01_00:00"
       amount     = tostring(planned_limit.value)
