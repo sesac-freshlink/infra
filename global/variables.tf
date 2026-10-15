@@ -30,12 +30,15 @@ variable "budget_test_alert" {
 }
 
 variable "developers" {
-  description = "팀원 IAM 사용자. 키는 영문 아이디(사용자 이름 freshlink-<키>, dev 개발자별 큐 이름과 같은 아이디), 값은 실명"
-  type        = map(string)
+  description = "팀원. 키는 영문 아이디(dev 개발자별 큐 이름에 쓴다), iam_user는 새싹이 발급한 기존 IAM 사용자 이름"
+  type = map(object({
+    name     = string
+    iam_user = string
+  }))
   default = {
-    taewoo    = "이태우"
-    kyungwoo  = "김경우"
-    younghoon = "문영훈"
+    kyungwoo  = { name = "김경우", iam_user = "sesac-c1" }
+    younghoon = { name = "문영훈", iam_user = "sesac-c3" }
+    taewoo    = { name = "이태우", iam_user = "sesac-c4" }
   }
 }
 

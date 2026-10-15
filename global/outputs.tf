@@ -14,8 +14,8 @@ output "github_oidc_provider_arn" {
 }
 
 output "developer_users" {
-  description = "팀원 IAM 사용자 이름"
-  value       = { for k, u in aws_iam_user.developer : k => u.name }
+  description = "freshlink-developers 그룹에 넣은 팀원 IAM 사용자"
+  value       = { for k, u in data.aws_iam_user.developer : k => u.user_name }
 }
 
 output "developers_group" {
