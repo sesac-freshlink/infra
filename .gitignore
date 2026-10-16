@@ -27,3 +27,7 @@ CLAUDE.local.md
 
 # state 버킷 이름(계정 ID 끝 4자리). backend.hcl.example만 커밋
 backend.hcl
+
+# Cognito 가입 확인 Lambda zip (terraform이 만든다)
+modules/cognito/.build/
+__pycache__/

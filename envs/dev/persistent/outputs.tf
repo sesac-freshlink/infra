@@ -77,3 +77,33 @@ output "schedules" {
   description = "켜고 끄기 일정 (Asia/Seoul)"
   value       = module.scheduler.schedules
 }
+
+output "cognito_user_pool_id" {
+  description = "dev User Pool ID (gateway issuer, member-service, frontend VITE_COGNITO_USER_POOL_ID)"
+  value       = module.cognito.user_pool_id
+}
+
+output "cognito_app_client_id" {
+  description = "dev 앱 클라이언트 ID (gateway aud, frontend VITE_COGNITO_CLIENT_ID)"
+  value       = module.cognito.app_client_id
+}
+
+output "cognito_issuer_uri" {
+  description = "dev JWT 발급자 주소 (gateway issuer-uri)"
+  value       = module.cognito.issuer_uri
+}
+
+output "cognito_jwks_uri" {
+  description = "dev 공개 키 주소"
+  value       = module.cognito.jwks_uri
+}
+
+output "member_cognito_policy_arn" {
+  description = "member-service IRSA Role에 붙일 Cognito 관리자 정책 ARN (클러스터 묶음, 할 일 7)"
+  value       = module.cognito.member_cognito_policy_arn
+}
+
+output "seed_accounts_secret_name" {
+  description = "시드 계정 자격 비밀 이름 (scripts/seed-cognito.ps1이 값을 넣는다)"
+  value       = module.cognito.seed_accounts_secret_name
+}
