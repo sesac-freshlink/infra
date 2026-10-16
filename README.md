@@ -78,7 +78,7 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 ```
 infra/
 ├── backend.hcl.example  # state 버킷 이름. backend.hcl로 복사해서 쓴다 (커밋 안 함)
-├── scripts/             # PowerShell: DB 포트 포워딩, 스키마·앱 사용자 만들기, 토스 키 넣기 (4-4)
+├── scripts/             # PowerShell: DB 포트 포워딩, 스키마·앱 사용자 만들기, 토스 키 넣기 (4-4), 시드 (4-5)
 ├── global/              # 두 환경 공용 루트 (state 버킷, Budgets, ECR, OIDC, 팀원 IAM)
 ├── envs/
 │   ├── dev/{persistent,cluster}/
@@ -90,8 +90,9 @@ infra/
     ├── rds/             # RDS MySQL 8.4, 보안 그룹, 앱 DB 비밀 3개, SSM 접속용 nano
     ├── scheduler/       # EventBridge Scheduler 켜고 끄기
     ├── messaging/       # SQS 공용 세트 + 개발자별 세트 (각 FIFO·표준·DLQ 2개)
+    ├── cognito/         # User Pool, 그룹 3개, 앱 클라이언트, 가입 확인 Lambda, member Cognito 정책, 시드 계정 비밀
     ├── eks/  irsa/  frontend/
-    └── observability/  cognito/
+    └── observability/
 ```
 
 새 리소스 위치: 두 환경이 같이 쓰면 `global`, 주말 동안 남아야 하면 `envs/<env>/persistent`, 시간당 과금이고 다시 만들어도 되면 `envs/<env>/cluster`.
@@ -113,13 +114,14 @@ infra/
 
 ## 할 일: 인증 (Cognito, C-01·C-02·C-03)
 
-- [ ] `modules/cognito` (`envs/<env>/persistent`): `aws_cognito_user_pool` `freshlink-<env>-users` (이메일을 아이디로, 이메일 인증), 사용자 속성 `custom:storeId`
-- [ ] `aws_cognito_user_group` `OWNER`, `CUSTOMER`
-- [ ] `aws_cognito_user_pool_client` 브라우저용 1개: 시크릿 없음, `ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, ID·액세스 토큰 1시간·리프레시 1일, `custom:storeId`는 읽기 속성에만 넣고 쓰기 속성에서 뺀다 (프론트는 ID 토큰을 API에 보낸다)
-- [ ] 가입 확인 트리거 Lambda (Python, Post Confirmation): `confirmSignUp`의 `clientMetadata.role`이 OWNER/CUSTOMER면 그 그룹, 아니면 CUSTOMER에 넣는다. 실행 Role은 `cognito-idp:AdminAddUserToGroup`만
-- [ ] `modules/irsa`: member-service Role에 이 User Pool의 `cognito-idp:AdminUpdateUserAttributes`만 추가
+- [x] `modules/cognito` (`envs/<env>/persistent`, 할 일 6): `freshlink-<env>-users` (이메일을 아이디로, 이메일 인증, Lite 요금제), 사용자 속성 `custom:storeId`
+- [x] 그룹 `OWNER`·`CUSTOMER`·`ADMIN`
+- [x] 브라우저용 앱 클라이언트 `freshlink-<env>-web`: 시크릿 없음, `ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, ID·액세스 토큰 1시간·리프레시 1일, `custom:storeId`는 읽기 속성에만 (프론트는 ID 토큰을 API에 보낸다)
+- [x] 가입 확인 트리거 Lambda `freshlink-<env>-post-confirmation` (Python 3.13): `PostConfirmation_ConfirmSignUp`일 때만 `CUSTOMER`에 넣는다. 화면이 넘기는 역할은 보지 않는다. 실행 Role은 이 User Pool의 `AdminAddUserToGroup`과 자기 로그만
+- [x] member-service용 Cognito 관리자 정책 `freshlink-<env>-member-cognito` (이 User Pool만: 계정 만들기·영구 비밀번호·속성·그룹·조회·실패 정리)
+- [ ] 위 정책을 member-service IRSA Role `freshlink-<env>-member-service-irsa`에 붙이기 (EKS·IRSA를 만드는 클러스터 묶음, 할 일 7)
 - [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 반영
-- [ ] 더미 점주 3명 시드 스크립트 (`admin-create-user` + 그룹 + `custom:storeId`, E-12)
+- [x] 시드 스크립트 (E-12): `scripts/seed-cognito.ps1` 관리자 1·점주 3, `scripts/seed-db.ps1` 점포 3·점주 member 행·상품 30 (4-5)
 
 ## 4. 사용법
 
@@ -354,6 +356,110 @@ aws sqs receive-message --queue-url $f --query "Messages[0].Body" --output text 
 ```
 
 김경우는 `freshlink-dev-member-db`·`member_app`·`member`, `dev-kyungwoo-...` 큐로 바꿔 친다. 서비스 실행 설정은 `QUEUE_PREFIX=dev-taewoo-`(또는 `dev-kyungwoo-`), `DB_URL=jdbc:mysql://127.0.0.1:3306/inventory`처럼 준다(할 일 4 접속 가이드에서 정리).
+
+### 4-5. dev Cognito + 시드 데이터 (할 일 6, 김진아)
+
+`envs/dev/persistent`에 아래 12개 리소스가 더해진다. 비용은 0이다(월간 활성 사용자 1만 명까지 무료, Lambda 무료 사용량 안).
+
+| 구분 | 이름 | 비고 |
+| --- | --- | --- |
+| User Pool | `freshlink-dev-users` | 이메일이 아이디, 이메일 인증 코드로 가입 확인, 비밀번호 8자 이상·대소문자·숫자·특수문자. 지우기 보호 켜짐 |
+| 그룹 | `OWNER`, `CUSTOMER`, `ADMIN` | 토큰 `cognito:groups` |
+| 사용자 속성 | `custom:storeId` | 점주의 점포 ID(`"1"`). 앱 클라이언트는 읽기만 |
+| 앱 클라이언트 | `freshlink-dev-web` | 시크릿 없음, SRP 로그인 |
+| 가입 확인 Lambda | `freshlink-dev-post-confirmation` + Role + 로그 그룹(14일) | 직접 가입하면 `CUSTOMER`. 비밀번호 찾기 확인 때는 아무것도 안 한다 |
+| IAM 정책 | `freshlink-dev-member-cognito` | member-service가 점주 계정을 만들 때 쓴다. EKS가 생기는 할 일 7에서 member IRSA Role에 붙인다 |
+| 비밀 | `freshlink-dev-seed-accounts` | 시드 계정 4개의 이메일·비밀번호·sub. 값은 2)의 스크립트가 넣는다 |
+
+시드 순서는 member 등록 순서(AD-01)와 같다: ① 점포 3개(ID 1~3, `SEOUL`)를 `PENDING`으로 → ② Cognito 관리자 1·점주 3 → ③ 받은 sub로 점주 member 행 → 점포에 점주 연결 + `ACTIVE`, ④ 상품 30개. ②는 Cognito만 있으면 되고, ①③④는 각 서비스 Flyway가 dev DB에 표를 만든 뒤에 된다. 그래서 스크립트를 둘로 나눴다.
+
+**준비.** 4-4를 끝냈어야 한다(`mysqlsh`, Session Manager 플러그인 설치 포함). 이 PR이 `main`에 합쳐진 뒤 한다.
+
+**1) 만들기.** `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+#   "Terraform has been successfully initialized!"가 나오면 성공 (archive 프로바이더를 새로 받는다)
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 12 to add, 0 to change, 0 to destroy."를 보고 yes 입력
+#   1분쯤 뒤 "Apply complete! Resources: 12 added"가 나오면 성공
+```
+
+**2) Cognito 시드 계정 (②).** 같은 창에서 친다. RDS가 꺼져 있어도 된다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1
+#   마지막 표에 admin@freshlink.test(ADMIN), owner1~3@freshlink.test(OWNER, storeId 1~3) 네 줄과 sub가 나오면 성공
+```
+
+- 메일은 보내지 않는다(`.test` 주소는 받을 수 없다). 이메일 인증 완료·영구 비밀번호로 만들어서 바로 로그인할 수 있다.
+- 비밀번호를 볼 때(관리자·점주 로그인 시험용). 팀원도 `--profile freshlink-dev`로 볼 수 있다.
+
+```powershell
+aws secretsmanager get-secret-value --secret-id freshlink-dev-seed-accounts --query SecretString --output text
+```
+
+- 여러 번 돌려도 된다. 비밀번호는 바뀌지 않는다.
+
+**3) 김경우·이태우에게 줄 값.** gateway·member-service 설정과 프론트 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 쓴다. 공개해도 되는 값이다.
+
+```powershell
+terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id; ""    # ap-northeast-2_로 시작
+terraform "-chdir=envs/dev/persistent" output -raw cognito_app_client_id; ""   # 영문·숫자 26자쯤
+terraform "-chdir=envs/dev/persistent" output -raw cognito_issuer_uri; ""      # https://cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_...
+```
+
+**4) 가입 확인 트리거 시험.** 내 실제 메일 주소로 고객 가입을 한 번 해 보고 지운다. `<내 메일>`과 `<비밀번호>`(대소문자·숫자·특수문자 포함 8자 이상)를 바꿔 친다.
+
+```powershell
+$client = terraform "-chdir=envs/dev/persistent" output -raw cognito_app_client_id
+$pool   = terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id
+aws cognito-idp sign-up --client-id $client --username "<내 메일>" --password "<비밀번호>" --user-attributes "Name=email,Value=<내 메일>"
+#   "UserConfirmed": false 가 나오고, 메일로 6자리 코드가 온다
+aws cognito-idp confirm-sign-up --client-id $client --username "<내 메일>" --confirmation-code "<받은 코드>"
+aws cognito-idp admin-list-groups-for-user --user-pool-id $pool --username "<내 메일>" --query "Groups[].GroupName" --output text
+#   CUSTOMER 가 나오면 성공
+aws cognito-idp admin-delete-user --user-pool-id $pool --username "<내 메일>"    # 시험 계정 지우기
+```
+
+**5) DB 시드 (①③④).** 김경우의 member Flyway V1, 이태우의 inventory Flyway V1이 dev DB에 돈 뒤에 한다(서비스를 dev DB에 붙여 한 번 띄우면 돈다). 평일 09:00~21:00(RDS가 켜진 시간)에 한다.
+
+창 2 (포트 포워딩, 끝날 때까지 열어 둔다):
+
+```powershell
+cd C:\fresh-link\repos\infra
+$env:AWS_PROFILE = "freshlink-admin"
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -LocalPort 3307
+#   "Waiting for connections..."가 나오면 성공
+```
+
+창 1:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -LocalPort 3307
+#   점포 1~3이 ACTIVE·owner1~3 이메일과 함께 나오고, product_count 30이 나오면 성공
+```
+
+- 표가 아직 없거나 칼럼이 시드와 다르면 `멈춤:`과 이유 목록을 보여 주고 **아무것도 넣지 않는다.** 그 목록을 스레드에 붙여 넣는다.
+- 한쪽만 준비됐으면 그쪽만 넣는다: 상품만 `-Part inventory`, 점포·점주만 `-Part member`.
+- 여러 번 돌려도 된다. 끝나면 창 2에서 `Ctrl+C`.
+- 재고 lot은 넣지 않는다. logistics-simulator 입고(INBOUND)로 생긴다.
+
+**완료 기준 (할 일 6).** 프론트에서 dev Cognito 가입·로그인이 되고 ID 토큰에 `cognito:groups`가 있다. 점주 시드 계정으로 로그인된다. 프론트가 아직 없으면 4)까지로 트리거를 확인하고, 로그인은 프론트 연결 때 시드 계정으로 확인한다.
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| apply `Inconsistent dependency lock file` | `init`을 다시 친다(새 archive 프로바이더) |
+| `seed-cognito.ps1` "cognito_user_pool_id가 없다" | 1)의 apply가 안 끝났다 |
+| `sign-up` `InvalidPasswordException` | 비밀번호 규칙(8자 이상, 대소문자·숫자·특수문자) |
+| `sign-up` 뒤 메일이 안 온다 | 스팸함을 본다. Cognito 기본 메일은 하루 50통까지다 |
+| `seed-db.ps1` `Can't connect to MySQL server` | 창 2 포트 포워딩이 꺼져 있거나 RDS가 꺼져 있다 |
+| `seed-db.ps1` "sub가 비밀에 없다" | 2)를 먼저 돌린다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

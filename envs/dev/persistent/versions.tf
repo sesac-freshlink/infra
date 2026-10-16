@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.7"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
+    }
   }
 
   # bucket은 레포 루트 backend.hcl에서 받는다: terraform init -backend-config=../../../backend.hcl
