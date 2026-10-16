@@ -338,7 +338,7 @@ aws ssm start-session --profile freshlink-dev --target <인스턴스 ID> --docum
 aws secretsmanager get-secret-value --secret-id freshlink-dev-inventory-db --query SecretString --output text --profile freshlink-dev
 
 # 접속: 물으면 위 비밀번호를 붙여 넣는다. 저장할지 물으면 N
-mysqlsh --sql --host=127.0.0.1 --port=3306 --user=inventory_app --schema=inventory -e "SHOW DATABASES;"
+mysqlsh --sql "--host=127.0.0.1" "--port=3306" "--user=inventory_app" "--schema=inventory" -e "SHOW DATABASES;"
 #   inventory(와 information_schema·performance_schema)만 보이면 성공
 
 # 내 큐로 쪽지 보내고 받기

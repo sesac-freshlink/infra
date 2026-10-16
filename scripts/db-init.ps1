@@ -35,9 +35,9 @@ foreach ($p in $out.app_databases.value.PSObject.Properties) {
     $pw = $app.password
 
     $sql.Add('CREATE DATABASE IF NOT EXISTS `{0}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;' -f $schema)
-    $sql.Add('CREATE USER IF NOT EXISTS ''{0}''@''%'' IDENTIFIED BY ''{1}'';' -f $user, $pw)
-    $sql.Add('ALTER USER ''{0}''@''%'' IDENTIFIED BY ''{1}'';' -f $user, $pw)
-    $sql.Add('GRANT ALL PRIVILEGES ON `{0}`.* TO ''{1}''@''%'';' -f $schema, $user)
+    $sql.Add(('CREATE USER IF NOT EXISTS ''{0}''@''%'' IDENTIFIED BY ''{1}'';' -f $user, $pw))
+    $sql.Add(('ALTER USER ''{0}''@''%'' IDENTIFIED BY ''{1}'';' -f $user, $pw))
+    $sql.Add(('GRANT ALL PRIVILEGES ON `{0}`.* TO ''{1}''@''%'';' -f $schema, $user))
 }
 $sql.Add("SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('member', 'inventory', 'orders');")
 $sql.Add("SELECT user, host FROM mysql.user WHERE user LIKE '%\_app';")
@@ -45,7 +45,7 @@ $sql.Add("SELECT user, host FROM mysql.user WHERE user LIKE '%\_app';")
 $tmp = [System.IO.Path]::GetTempFileName()
 try {
     Set-Content -Path $tmp -Value $sql -Encoding Ascii
-    $master.password | mysqlsh --sql --host=127.0.0.1 --port=$LocalPort --user=$($master.username) --passwords-from-stdin --file=$tmp
+    mysqlsh --sql "--host=127.0.0.1" "--port=$LocalPort" "--user=$($master.username)" "--password=$($master.password)" "--file=$tmp"
     if ($LASTEXITCODE -ne 0) { throw "SQL 실행 실패. 포트 포워딩 창이 열려 있는지 확인한다." }
 } finally {
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
