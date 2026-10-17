@@ -9,7 +9,7 @@ output "ecr_repository_urls" {
 }
 
 output "github_oidc_provider_arn" {
-  description = "GitHub OIDC 공급자 ARN (할 일 10의 Role trust에서 쓴다)"
+  description = "GitHub OIDC 공급자 ARN (서비스 CI Role·켜고 끄기 Role trust에서 쓴다)"
   value       = aws_iam_openid_connect_provider.github.arn
 }
 
@@ -21,4 +21,9 @@ output "developer_users" {
 output "developers_group" {
   description = "팀원 IAM 그룹 이름"
   value       = aws_iam_group.developers.name
+}
+
+output "ci_ecr_push_role_arn" {
+  description = "서비스 CI가 맡는 Role ARN (.github 레포 spring-build.yml의 aws-role-arn 기본값)"
+  value       = aws_iam_role.ci_ecr_push.arn
 }

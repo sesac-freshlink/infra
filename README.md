@@ -568,6 +568,138 @@ terraform "-chdir=envs/dev/cluster" apply "-var=nat_enabled=false"
 | 워크플로 `Could not assume role` | 4)의 비밀 이름·값을 다시 넣는다. `main`이 아닌 브랜치에서 돌리면 거부된다. 레포 OIDC sub 형식이 바뀌었으면 `modules/cluster-actions` `github_sub_prefixes`를 맞춘다 |
 | 워크플로 요약 표에 남은 것이 있다 | 표의 ID를 스레드에 붙여 넣는다. ALB가 남았으면 다시 `destroy`를 돌린다 |
 
+### 4-7. CI·dev 배포·gateway 확인 (할 일 8·9·10, 김진아)
+
+이 PR과 `.github`·`gitops`·서비스 레포 PR로 아래가 생긴다.
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `global` | Role `freshlink-ci-ecr-push`: 서비스 레포 5개의 `dev`·`main` 브랜치 GitHub Actions만 맡을 수 있고, ECR 5개에 이미지를 올리는 권한만 있다 |
+| `envs/dev/persistent` | dev 앱 클라이언트에 `ALLOW_ADMIN_USER_PASSWORD_AUTH` (관리자 IAM 자격으로만 쓰는 로그인 방식. 아래 6)에서 시험 토큰을 받는다) |
+| `envs/dev/cluster` | ArgoCD에 `root` Application 등록(`charts/argocd-root`). ECR 주소·IRSA Role ARN·Cognito 값을 넘기고, 나머지는 gitops `argocd/apps`가 만든다 |
+
+흐름: 서비스 레포 `dev`에 합치기 → Actions(`.github` 레포 `spring-build.yml`) 빌드·테스트 → ECR `<서비스>:<커밋 7자리>` → gitops `envs/dev/<서비스>/values.yaml` 태그 커밋 → dev ArgoCD → 파드.
+
+**1) AWS에 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다. 클러스터는 꺼져 있어도 된다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=global" apply
+#   "Plan: 2 to add, 0 to change, 0 to destroy."를 보고 yes 입력 (Role과 그 권한. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
+terraform "-chdir=global" output -raw ci_ecr_push_role_arn
+#   arn:aws:iam::929523582720:role/freshlink-ci-ecr-push 가 나오면 성공 (spring-build.yml 기본값과 같아야 한다)
+
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 0 to add, 1 to change, 0 to destroy."를 보고 yes 입력 (앱 클라이언트 로그인 방식. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
+```
+
+**2) gitops 쓰기 키 만들기.** CI가 gitops에 태그를 커밋할 때 쓴다. 같은 창에서 친다.
+
+```powershell
+ssh-keygen -t ed25519 -C "freshlink-ci" -f "$HOME\freshlink-gitops-key"
+#   비밀번호를 두 번 물으면 아무것도 치지 말고 Enter 두 번
+Get-Content "$HOME\freshlink-gitops-key.pub" | Set-Clipboard
+```
+
+1. https://github.com/sesac-freshlink/gitops/settings/keys 를 열고 **Add deploy key**를 누른다.
+2. Title `freshlink-ci`, Key에 Ctrl+V, **Allow write access**에 체크하고 **Add key**를 누른다.
+
+```powershell
+Get-Content "$HOME\freshlink-gitops-key" -Raw | Set-Clipboard
+```
+
+3. https://github.com/organizations/sesac-freshlink/settings/secrets/actions 를 열고 **New organization secret**을 누른다.
+4. Name `GITOPS_DEPLOY_KEY`, Value에 Ctrl+V.
+5. Repository access는 **Selected repositories**를 고르고 톱니바퀴를 눌러 gateway, member-service, inventory-service, order-service, logistics-simulator 다섯 개에 체크한 뒤 **Add secret**을 누른다.
+
+```powershell
+Remove-Item "$HOME\freshlink-gitops-key*"    # PC에 남기지 않는다
+```
+
+**3) common 패키지 읽기 허용.** member·inventory·order의 빌드가 `com.freshlink:common`을 받는다.
+
+1. https://github.com/orgs/sesac-freshlink/packages 에서 `com.freshlink.common`을 누른다.
+2. 오른쪽 아래 **Package settings** → **Manage Actions access** → **Add Repository**.
+3. member-service, inventory-service, order-service를 더하고 Role을 **Read**로 둔다.
+
+**4) 서비스 PR 합치기.** gateway, logistics-simulator, member-service, inventory-service, order-service의 CI PR을 `dev`에 합친다. 합치는 순간 각 레포 Actions의 `ci`가 돈다.
+
+- https://github.com/sesac-freshlink/gitops/commits/main 에 `chore(<서비스>): image <7자리>` 커밋이 5개 생기면 성공
+- 실패하면 해당 레포 Actions의 `ci` 실행을 누르고, 빨간 단계 이름을 스레드에 붙여 넣는다
+
+**5) RDS·접속용 인스턴스 켜고 클러스터 만들기.** (주말·밤에 확인할 때. 평일 낮에는 이미 켜져 있다)
+
+```powershell
+aws rds start-db-instance --db-instance-identifier freshlink-dev-mysql --query "DBInstance.DBInstanceStatus" --output text
+#   "starting"이 나오면 성공 (5분쯤 걸린다)
+aws ec2 start-instances --instance-ids (terraform "-chdir=envs/dev/persistent" output -raw ssm_access_instance_id) --query "StartingInstances[0].CurrentState.Name" --output text
+#   "pending"이 나오면 성공
+```
+
+1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml → **Run workflow** → action `create` → **Run workflow**.
+2. 20분쯤 뒤 요약에 "ArgoCD 준비됨"이 나오면 성공.
+
+**6) 할 일 9 확인: 서비스 5개 Synced·Healthy.** 클러스터가 생기고 5분쯤 기다린 뒤 친다.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+kubectl -n argocd get applications
+#   root, gateway, member-service, inventory-service, order-service, logistics-simulator 여섯 줄이
+#   SYNC STATUS Synced, HEALTH STATUS Healthy면 성공 (Progressing이면 2분 뒤 다시)
+kubectl -n freshlink get pods -o custom-columns="NAME:.metadata.name,IMAGE:.spec.containers[0].image,READY:.status.containerStatuses[0].ready"
+#   파드 8개가 READY true이고, IMAGE 끝이 :latest가 아닌 7자리면 성공
+```
+
+**7) 할 일 10 확인: dev에서 401·403.** 같은 창에서 친다.
+
+```powershell
+$alb = kubectl -n freshlink get ingress gateway -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+$alb                                  # ...elb.amazonaws.com 주소가 나오면 성공 (처음 몇 분은 접속이 안 될 수 있다)
+
+$pool   = terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id
+$client = terraform "-chdir=envs/dev/persistent" output -raw cognito_app_client_id
+$seed   = aws secretsmanager get-secret-value --secret-id freshlink-dev-seed-accounts --query SecretString --output text | ConvertFrom-Json
+function Get-IdToken($email) {
+    $pw = ($seed | Where-Object email -eq $email).password
+    @{ USERNAME = $email; PASSWORD = $pw } | ConvertTo-Json -Compress | Set-Content "$env:TEMP\auth.json" -Encoding ascii
+    $t = aws cognito-idp admin-initiate-auth --user-pool-id $pool --client-id $client --auth-flow ADMIN_USER_PASSWORD_AUTH --auth-parameters "file://$env:TEMP\auth.json" --query AuthenticationResult.IdToken --output text
+    Remove-Item "$env:TEMP\auth.json"
+    $t
+}
+$owner = Get-IdToken "owner1@freshlink.test"
+$admin = Get-IdToken "admin@freshlink.test"
+
+curl.exe -s -o NUL -w '%{http_code}\n' "http://$alb/api/members/me"                                             # 401 (토큰 없음)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer x.y.z" "http://$alb/api/members/me"            # 401 (가짜 토큰)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $owner" "http://$alb/api/admin/stores"         # 403 (점주가 관리자 경로)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $admin" "http://$alb/api/owner/inventory"      # 403 (관리자가 점주 경로)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $owner" "http://$alb/api/owner/inventory"      # 401·403이 아니면 성공 (gateway 통과. 서비스에 기능이 아직 없으면 404)
+curl.exe -s -o NUL -w '%{http_code}\n' "http://$alb/actuator/health"                                            # 404 (ALB가 /api만 넘긴다)
+```
+
+위조 헤더(`X-User-Id` 등)가 서비스에 닿지 않는지는 gateway 테스트가 확인한다(4)의 gateway `ci`가 초록이면 통과).
+
+**8) 끝나면 끄기 (주말).** dev-cluster 워크플로를 action `destroy`로 돌린다. RDS·접속용 인스턴스는 매일 23:00에 저절로 꺼진다. 바로 끄려면:
+
+```powershell
+aws rds stop-db-instance --db-instance-identifier freshlink-dev-mysql --query "DBInstance.DBInstanceStatus" --output text
+aws ec2 stop-instances --instance-ids (terraform "-chdir=envs/dev/persistent" output -raw ssm_access_instance_id) --query "StoppingInstances[0].CurrentState.Name" --output text
+```
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| 서비스 `ci`가 `Could not assume role` | 1)의 global apply가 안 됐거나 `dev`가 아닌 브랜치에서 돌렸다 |
+| 서비스 `ci` 빌드에서 `401 Unauthorized` (maven.pkg.github.com) | 3)의 패키지 읽기 허용이 빠졌다 |
+| `gitops 받기`·`gitops dev 태그 커밋`에서 `Permission denied (publickey)` | 2)의 deploy key 쓰기 체크나 조직 비밀의 레포 선택이 빠졌다 |
+| Application이 `Unknown`, 메시지 `image.tag가 필요하다` | 그 서비스의 `ci`가 아직 gitops에 태그를 커밋하지 않았다(4) |
+| 파드가 `CrashLoopBackOff` (member·inventory·order) | RDS가 꺼져 있다(5). `kubectl -n freshlink logs deploy/<서비스>`로 확인 |
+| `get-secret-value`가 `AccessDenied` | 이 창에서 `$env:AWS_PROFILE = "freshlink-admin"`을 안 쳤다 |
+| `admin-initiate-auth`가 `Auth flow not enabled for this client` | 1)의 persistent apply를 안 했다 |
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |
