@@ -91,7 +91,10 @@ infra/
     ├── scheduler/       # EventBridge Scheduler 켜고 끄기
     ├── messaging/       # SQS 공용 세트 + 개발자별 세트 (각 FIFO·표준·DLQ 2개)
     ├── cognito/         # User Pool, 그룹 3개, 앱 클라이언트, 가입 확인 Lambda, member Cognito 정책, 시드 계정 비밀
-    ├── eks/  irsa/  frontend/
+    ├── eks/             # EKS, 노드 그룹(desired는 스케줄러 몫), OIDC 공급자, 애드온 4개
+    ├── irsa/            # ServiceAccount 하나당 IAM Role 하나 (+ LB Controller 공식 정책 JSON)
+    ├── cluster-actions/ # 켜고 끄기 워크플로가 맡는 GitHub OIDC Role (infra main만)
+    ├── frontend/
     └── observability/
 ```
 
@@ -101,16 +104,16 @@ infra/
 
 - [ ] `modules/observability`: Loki 로그 버킷 `freshlink-<env>-loki-logs-<계정ID 끝 4자리>`, 수명 주기 14일, 퍼블릭 차단 (`envs/<env>/persistent`)
 - [ ] `modules/irsa`: `freshlink-<env>-loki-irsa` (위 버킷 읽기·쓰기만), EBS CSI 드라이버 Role
-- [ ] `envs/<env>/cluster`: EBS CSI 드라이버 애드온, `gp3` StorageClass
+- [x] `envs/<env>/cluster`: EBS CSI 드라이버 애드온·IRSA Role, 기본 `gp3` StorageClass (할 일 7)
 - [ ] 만든 버킷 이름·Role ARN을 `gitops/platform/observability/loki.yaml`에 반영
 
 ## 할 일: 켜고 끄기 (I-09)
 
 - [x] `modules/scheduler` (`envs/<env>/persistent`, 할 일 3): RDS·nano 일정 6개(평일 09:00 켜기, 평일 21:00 끄기, 매일 23:00 안전 끄기), 시간대 `Asia/Seoul`, universal target `aws-sdk:rds:startDBInstance`·`stopDBInstance`·`ec2:startInstances`·`stopInstances`
 - [x] 스케줄러 IAM Role `freshlink-<env>-scheduler-role`: `freshlink-<env>-mysql`과 nano 한 대에 대한 시작·중지만
-- [ ] 노드 그룹 일정(화~금 09:10 desired 2, 월~목 21:00·매일 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 9)
-- [ ] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
-- [ ] GitHub Actions: 월 클러스터 생성, 화~금 NAT 생성, 월~목 NAT 삭제, 금 클러스터 삭제, 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch)
+- [x] 노드 그룹 일정(화~금 09:10 desired 2, 월~목 21:00·월~금 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 7)
+- [x] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
+- [x] GitHub Actions `.github/workflows/dev-cluster.yml`: 월 클러스터 생성, 화~금 NAT 생성, 월~목 NAT 삭제, 금 클러스터 삭제(Ingress·PVC 먼저 정리), 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch) (할 일 7)
 
 ## 할 일: 인증 (Cognito, C-01·C-02·C-03)
 
@@ -119,7 +122,7 @@ infra/
 - [x] 브라우저용 앱 클라이언트 `freshlink-<env>-web`: 시크릿 없음, `ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, ID·액세스 토큰 1시간·리프레시 1일, `custom:storeId`는 읽기 속성에만 (프론트는 ID 토큰을 API에 보낸다)
 - [x] 가입 확인 트리거 Lambda `freshlink-<env>-post-confirmation` (Python 3.13): `PostConfirmation_ConfirmSignUp`일 때만 `CUSTOMER`에 넣는다. 화면이 넘기는 역할은 보지 않는다. 실행 Role은 이 User Pool의 `AdminAddUserToGroup`과 자기 로그만
 - [x] member-service용 Cognito 관리자 정책 `freshlink-<env>-member-cognito` (이 User Pool만: 계정 만들기·영구 비밀번호·속성·그룹·조회·실패 정리)
-- [ ] 위 정책을 member-service IRSA Role `freshlink-<env>-member-service-irsa`에 붙이기 (EKS·IRSA를 만드는 클러스터 묶음, 할 일 7)
+- [x] 위 정책을 member-service IRSA Role `freshlink-<env>-member-service-irsa`에 붙이기 (EKS·IRSA를 만드는 클러스터 묶음, 할 일 7)
 - [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 반영
 - [x] 시드 스크립트 (E-12): `scripts/seed-cognito.ps1` 관리자 1·점주 3, `scripts/seed-db.ps1` 점포 3·점주 member 행·상품 30 (4-5)
 
@@ -460,6 +463,108 @@ powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -LocalPort 3307
 | `sign-up` 뒤 메일이 안 온다 | 스팸함을 본다. Cognito 기본 메일은 하루 50통까지다 |
 | `seed-db.ps1` `Can't connect to MySQL server` | 창 2 포트 포워딩이 꺼져 있거나 RDS가 꺼져 있다 |
 | `seed-db.ps1` "sub가 비밀에 없다" | 2)를 먼저 돌린다 |
+
+### 4-6. dev 클러스터 만들기 (할 일 7, 김진아)
+
+`envs/dev/cluster`에 아래가 생긴다. RDS·SSM 접속용 인스턴스는 **꺼져 있어도 된다**(클러스터는 DB에 붙지 않는다. RDS 보안 그룹 규칙만 더한다).
+
+| 구분 | 이름 | 비고 |
+| --- | --- | --- |
+| 네트워크 | NAT Gateway `freshlink-dev-nat` + EIP (public-a), app 라우팅 테이블 `0.0.0.0/0` 경로 | 밤에는 워크플로가 지운다 |
+| EKS | `freshlink-dev-eks` (Kubernetes 1.36, 표준 지원만), 노드 그룹 `freshlink-dev-nodes` t3.large 2대(최소 0, 최대 3) | 관리자: `sesac-c2`, 워크플로 Role |
+| 애드온 | VPC CNI, kube-proxy, CoreDNS, EBS CSI 드라이버 | 버전은 1.36 기본값 |
+| IRSA Role | `freshlink-dev-<이름>-irsa`: member-service(Cognito 정책), inventory-service·order-service·logistics-simulator(공용 `dev-` 큐 중 자기 것만), aws-load-balancer-controller, ebs-csi-driver, external-secrets(앱 DB 비밀 3개·토스 키만) | gateway는 AWS를 부르지 않아 없다 |
+| Helm | ArgoCD 10.10.5, AWS Load Balancer Controller 3.6.0, metrics-server 3.14.0, External Secrets Operator 2.13.0 | 관측성·앱은 ArgoCD가 설치한다(할 일 9) |
+| 기타 | 기본 StorageClass `gp3`, RDS 보안 그룹에 EKS → 3306 | |
+
+`envs/dev/persistent`에는 노드 그룹 일정 3개(화~금 09:10 2대, 월~목 21:00 0대, 월~금 23:00 0대)와 워크플로 Role `freshlink-dev-cluster-actions`가 더해진다.
+
+비용: 켜져 있는 동안 시간당 약 0.37 USD(EKS 0.10, 노드 2대 0.21, NAT 0.06). 일정대로 돌면 aws-리소스-계획.md 6-6 D안(약 195 USD) 안이다.
+
+**준비 (처음 한 번).** kubectl을 설치하고 창을 새로 연다.
+
+```powershell
+winget install --id Kubernetes.kubectl -e --source winget
+# 새 창에서
+kubectl version --client    # "Client Version: v1..."이 나오면 성공
+```
+
+**1) 유지 묶음에 일정·Role 더하기.** 이 PR이 `main`에 합쳐진 뒤, `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 7 to add, 2 to change, 0 to destroy."를 보고 yes 입력
+#   (바뀌는 2개는 스케줄러 Role 설명과 권한. 노드 그룹 수 바꾸기 권한이 더해진다)
+#   "Apply complete! Resources: 7 added, 2 changed"가 나오면 성공
+```
+
+**2) 클러스터 만들기.** 같은 창에서 친다. 15~20분 걸린다.
+
+```powershell
+aws ec2 describe-instance-type-offerings --location-type availability-zone --filters Name=instance-type,Values=t3.large --query "InstanceTypeOfferings[].Location" --output text
+#   ap-northeast-2a 와 ap-northeast-2c 가 둘 다 보이면 성공
+
+terraform "-chdir=envs/dev/cluster" init "-backend-config=../../../backend.hcl"
+#   "Terraform has been successfully initialized!"가 나오면 성공
+terraform "-chdir=envs/dev/cluster" apply
+#   "Plan: 46 to add, 0 to change, 0 to destroy."를 보고 yes 입력
+#   15~20분 뒤 "Apply complete! Resources: 46 added"가 나오면 성공
+```
+
+**3) ArgoCD 확인.** 같은 창에서 친다.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+kubectl get nodes                  # 두 줄이 STATUS Ready면 성공
+kubectl -n argocd get pods         # 모두 Running이면 성공
+
+# 처음 비밀번호 (아이디 admin)
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+
+kubectl -n argocd port-forward svc/argocd-server 8443:443
+#   "Forwarding from 127.0.0.1:8443"이 나오면 브라우저에서 https://localhost:8443 을 연다
+#   인증서 경고는 "고급 → 계속"으로 넘긴다. admin / 위 비밀번호로 로그인되면 성공. 창에서 Ctrl+C로 끝낸다
+```
+
+**4) 워크플로에 Role 알려 주기.** 값을 복사한다.
+
+```powershell
+terraform "-chdir=envs/dev/persistent" output -raw cluster_actions_role_arn | Set-Clipboard
+```
+
+1. 브라우저에서 https://github.com/sesac-freshlink/infra/settings/secrets/actions 를 연다.
+2. **New repository secret**을 누른다.
+3. Name에 `AWS_DEV_CLUSTER_ROLE_ARN`을 넣고, Secret에 Ctrl+V로 붙여 넣는다.
+4. **Add secret**을 누른다.
+
+**5) 수동 버튼으로 지우기 → 만들기 시험.** (할 일 7 완료 기준)
+
+1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml 을 연다.
+2. **Run workflow** → action `destroy` → **Run workflow**. 15분쯤 걸린다.
+3. 끝난 작업을 눌러 요약 표가 전부 "없음"이고 초록색이면 성공(남은 ALB·ENI·EBS 없음).
+4. 다시 **Run workflow** → action `create`. 20분쯤 뒤 요약에 "ArgoCD 준비됨"이 나오면 성공.
+5. 3)의 `kubectl -n argocd get pods`로 다시 확인한다.
+
+주말에 시험했으면 끝나고 `destroy`를 한 번 더 돌려 둔다. 월요일 08:40에 워크플로가 다시 만든다.
+
+**밤(21:10 이후)에 사람이 apply할 때**는 NAT를 다시 만들지 않게 `-var nat_enabled=false`를 붙인다. 낮에는 붙이지 않는다.
+
+```powershell
+terraform "-chdir=envs/dev/cluster" apply "-var=nat_enabled=false"
+```
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| cluster apply `Unable to find remote state` | 1)의 persistent apply가 안 끝났거나 `init`의 `backend.hcl`이 없다 |
+| `kubectl` `the server has asked for the client to provide credentials` | `AWS_PROFILE`이 `freshlink-admin`이 아니다. 2)의 창에서 친다 |
+| 노드 그룹 `CREATE_FAILED` `NodeCreationFailure` | NAT 경로가 없다. 밤에 `nat_enabled=false`로 만들었는지 본다 |
+| 워크플로 `Could not assume role` | 4)의 비밀 이름·값을 다시 넣는다. `main`이 아닌 브랜치에서 돌리면 거부된다 |
+| 워크플로 요약 표에 남은 것이 있다 | 표의 ID를 스레드에 붙여 넣는다. ALB가 남았으면 다시 `destroy`를 돌린다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

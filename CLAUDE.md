@@ -47,7 +47,8 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 할 일 2에서 정한 것: state 키 `<루트>/terraform.tfstate`(예 `dev/persistent/terraform.tfstate`), 잠금은 S3 잠금 파일(`use_lockfile`, DynamoDB 없음), 버킷 이름은 레포 루트 `backend.hcl`(커밋 안 함)로 `-backend-config`에 넘김, state 버킷·Budgets·팀원 IAM은 `global`.
 - 팀원 IAM 권한은 이름·태그로 dev를 가려낸다: 큐 `dev-*`, 비밀 `freshlink-dev-*`, Cognito·SSM 인스턴스는 태그 `Environment=dev`(provider `default_tags`), 로그 그룹 이름에 `freshlink-dev-`. 이 규칙을 어기는 이름을 만들지 않는다.
 - 할 일 3에서 정한 것: 개발자별 큐는 `<env>-<아이디>-inventory-commands.fifo` 등(`QUEUE_PREFIX` `<env>-<아이디>-`), DLQ `...-dlq(.fifo)`, maxReceiveCount 3. 앱 DB 비밀 `freshlink-<env>-<서비스>-db`(JSON host·port·dbname·username·password), 스키마 `member`·`inventory`·`orders`, 사용자 `*_app`.
-- 정하지 않은 값은 지어내지 않는다: IRSA Role을 두는 묶음(할 일 9), OIDC Role 이름·개수·권한 범위(할 일 10), 스케줄 워크플로가 쓰는 Role(할 일 9·10), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
+- 할 일 7에서 정한 것: IRSA Role은 cluster 묶음(`modules/irsa`, OIDC 공급자가 클러스터와 같이 생기고 지워진다). 켜고 끄기 워크플로 Role은 persistent 묶음 `freshlink-<env>-cluster-actions`(infra `main`만 신뢰, PowerUserAccess + `freshlink-<env>-*` IAM만). 클러스터·노드 그룹 이름은 persistent가 정하고 cluster가 remote state로 읽는다.
+- 정하지 않은 값은 지어내지 않는다: 서비스 CI가 맡는 OIDC Role 이름·개수·권한 범위(할 일 8), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
 
 ---
 

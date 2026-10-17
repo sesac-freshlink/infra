@@ -5,7 +5,7 @@
 | 루트 | state 키 | 채우는 할 일 |
 | --- | --- | --- |
 | `dev/persistent` | `dev/persistent/terraform.tfstate` | 3 (RDS·SQS·Secrets), 그 뒤 Cognito·프론트·관측성 |
-| `dev/cluster` | `dev/cluster/terraform.tfstate` | 9 |
+| `dev/cluster` | `dev/cluster/terraform.tfstate` | 7 (EKS·NAT·IRSA·Helm, README 4-6) |
 | `prod/persistent` | `prod/persistent/terraform.tfstate` | 15 |
 | `prod/cluster` | `prod/cluster/terraform.tfstate` | 15 |
 

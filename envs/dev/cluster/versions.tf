@@ -6,6 +6,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.1"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 3.2"
+    }
   }
 
   # bucket은 레포 루트 backend.hcl에서 받는다: terraform init -backend-config=../../../backend.hcl
