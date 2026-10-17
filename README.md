@@ -497,6 +497,8 @@ git pull
 $env:AWS_PROFILE = "freshlink-admin"
 aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
 
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+#   "Terraform has been successfully initialized!"가 나오면 성공 (새 모듈 cluster-actions를 읽는다)
 terraform "-chdir=envs/dev/persistent" apply
 #   "Plan: 7 to add, 2 to change, 0 to destroy."를 보고 yes 입력
 #   (바뀌는 2개는 스케줄러 Role 설명과 권한. 노드 그룹 수 바꾸기 권한이 더해진다)
@@ -563,7 +565,7 @@ terraform "-chdir=envs/dev/cluster" apply "-var=nat_enabled=false"
 | cluster apply `Unable to find remote state` | 1)의 persistent apply가 안 끝났거나 `init`의 `backend.hcl`이 없다 |
 | `kubectl` `the server has asked for the client to provide credentials` | `AWS_PROFILE`이 `freshlink-admin`이 아니다. 2)의 창에서 친다 |
 | 노드 그룹 `CREATE_FAILED` `NodeCreationFailure` | NAT 경로가 없다. 밤에 `nat_enabled=false`로 만들었는지 본다 |
-| 워크플로 `Could not assume role` | 4)의 비밀 이름·값을 다시 넣는다. `main`이 아닌 브랜치에서 돌리면 거부된다 |
+| 워크플로 `Could not assume role` | 4)의 비밀 이름·값을 다시 넣는다. `main`이 아닌 브랜치에서 돌리면 거부된다. 레포 OIDC sub 형식이 바뀌었으면 `modules/cluster-actions` `github_sub_prefixes`를 맞춘다 |
 | 워크플로 요약 표에 남은 것이 있다 | 표의 ID를 스레드에 붙여 넣는다. ALB가 남았으면 다시 `destroy`를 돌린다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)

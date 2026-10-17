@@ -32,14 +32,16 @@ data "aws_iam_policy_document" "assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+      # infra 레포는 GitHub "immutable subject"를 쓴다(sub = repo:<조직>@<조직ID>/<레포>@<레포ID>:...).
+      # 옛 형식도 같이 받아 둔다(설정을 끄면 이 형식으로 돌아간다).
+      values = [for p in var.github_sub_prefixes : "${p}:ref:refs/heads/main"]
     }
   }
 }
 
 resource "aws_iam_role" "this" {
   name                 = "${var.name_prefix}-cluster-actions"
-  description          = "GitHub Actions ${var.github_repository} main: apply/destroy ${var.name_prefix} cluster bundle"
+  description          = "GitHub Actions infra main: apply/destroy ${var.name_prefix} cluster bundle"
   assume_role_policy   = data.aws_iam_policy_document.assume.json
   max_session_duration = 7200 # EKS 생성·삭제 15~20분 + Helm. 기본 1시간이면 충분하지만 여유를 둔다
 }
