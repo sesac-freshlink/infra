@@ -1,6 +1,7 @@
 # dev 유지 묶음 (할 일 3): 네트워크, RDS + SSM 접속용 nano + 앱 DB 비밀, 켜고 끄기 일정, SQS, 토스 키 비밀.
 # 할 일 6: Cognito User Pool + 가입 확인 Lambda + member Cognito 관리자 정책 + 시드 계정 비밀.
 # 할 일 7: 노드 그룹 일정(평일), 켜고 끄기 워크플로가 맡는 GitHub Actions Role, 클러스터·노드 그룹 이름.
+# 할 일 13: 프론트 S3 + CloudFront(/api/* → gateway ALB) + frontend 레포 배포 Role.
 # 주말에도 그대로 둔다. RDS·nano는 스케줄러가 평일 09:00에 켜고 21:00·23:00에 끈다.
 
 locals {
@@ -63,6 +64,14 @@ module "messaging" {
 
   env        = local.env
   developers = var.developers
+}
+
+module "frontend" {
+  source = "../../../modules/frontend"
+
+  name_prefix   = local.name_prefix
+  deploy_branch = "dev"
+  force_destroy = true # dev는 빌드 파일만 있어서 지워도 된다
 }
 
 # 토스페이먼츠 테스트 키. 값은 Terraform에 넣지 않고 김진아가 README 4-4 명령으로 넣는다(state에 남지 않게).

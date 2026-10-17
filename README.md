@@ -39,7 +39,7 @@
 | DB | RDS MySQL 8.4 `freshlink-<env>-mysql` + SSM 접속용 t4g.nano(public-a, 인바운드 없음) | db.t4g.small, gp3 20 GiB, 단일 AZ, 스키마 3개 |
 | 메시징 | SQS `<env>-inventory-commands.fifo`, `<env>-inventory-results` + DLQ 2개 (dev는 개발자별 큐 추가) | 3번 실패 시 DLQ |
 | 네트워크 | VPC(dev `10.0.0.0/16`, prod `10.1.0.0/16`), 서브넷 6개, NAT 1개, S3 Gateway 엔드포인트 | 앱 서브넷 /20 |
-| 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function + ACM(us-east-1) | |
+| 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function, `/api/*` → gateway ALB | 도메인이 없어 ACM 없이 `https://<id>.cloudfront.net` |
 | 보안 | IRSA Role, Secrets Manager + External Secrets Operator, 보안 그룹 | |
 | 인증 | Cognito User Pool `freshlink-<env>-users` + 가입 확인 트리거 Lambda | |
 | 관측성 | S3 Loki 로그 버킷(14일), Loki IRSA Role, EBS CSI 드라이버 | 스택은 [gitops/platform/observability](https://github.com/sesac-freshlink/gitops/tree/main/platform/observability)에서 ArgoCD가 설치 |
@@ -699,6 +699,75 @@ aws ec2 stop-instances --instance-ids (terraform "-chdir=envs/dev/persistent" ou
 | 파드가 `CrashLoopBackOff` (member·inventory·order) | RDS가 꺼져 있다(5). `kubectl -n freshlink logs deploy/<서비스>`로 확인 |
 | `get-secret-value`가 `AccessDenied` | 이 창에서 `$env:AWS_PROFILE = "freshlink-admin"`을 안 쳤다 |
 | `admin-initiate-auth`가 `Auth flow not enabled for this client` | 1)의 persistent apply를 안 했다 |
+
+### 4-8. dev 프론트 배포 (할 일 13, 김진아)
+
+이 PR과 `frontend` 레포 PR(`frontend-deploy.yml`)로 아래가 생긴다.
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `envs/dev/persistent` (`modules/frontend`) | S3 `freshlink-dev-frontend-<계정ID 끝 4자리>`(비공개, CloudFront만 읽음), CloudFront 배포(comment `freshlink-dev-frontend`), SPA 경로 Function, `/api/*` 캐시 정책, 배포 Role `freshlink-dev-frontend-deploy`(frontend 레포 `dev` 브랜치만, 이 버킷 쓰기와 무효화만) |
+| `scripts/sync-api-origin.sh` | CloudFront `/api/*` 오리진을 지금 gateway ALB 주소로 바꾼다 |
+| `.github/workflows/dev-cluster.yml` | `create` 끝에 위 스크립트를 돌리고, 수동 버튼 `api-origin`(오리진만 맞추기)이 생긴다 |
+
+- ALB는 클러스터를 만들 때마다 주소가 바뀐다. 그래서 `/api/*` 오리진 주소는 Terraform이 아니라 스크립트가 맞추고, Terraform은 그 칸을 무시한다(`ignore_changes`). 클러스터가 없을 때 `/api/*`는 버킷 주소를 가리켜 403이 난다.
+- 비용: CloudFront·S3 요청 비용뿐이다(시간당 과금 없음). 이 규모면 한 달 1 USD 아래다.
+- 아직 ALB는 인터넷 전체에서 80번으로 열려 있다. CloudFront 접두사 목록으로만 받게 하는 것은 따로 한다.
+
+**1) AWS에 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다. 클러스터는 꺼져 있어도 된다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 11 to add, 0 to change, 0 to destroy."를 보고 yes 입력 (다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
+#   CloudFront 배포가 퍼지는 데 5~10분 걸린다. "Apply complete! Resources: 11 added"가 나오면 성공
+terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+#   https://xxxxxxxx.cloudfront.net 이 나오면 성공. 이 주소를 팀에 알린다
+```
+
+**2) frontend 레포에 배포 값 넣기.** 같은 창에서 친다. `gh auth status`가 로그인되어 있어야 한다.
+
+```powershell
+$p = "envs/dev/persistent"
+$r = "sesac-freshlink/frontend"
+gh variable set DEV_FRONTEND_BUCKET          --repo $r --body (terraform "-chdir=$p" output -raw frontend_bucket)
+gh variable set DEV_FRONTEND_DISTRIBUTION_ID --repo $r --body (terraform "-chdir=$p" output -raw frontend_distribution_id)
+gh variable set DEV_FRONTEND_DEPLOY_ROLE_ARN --repo $r --body (terraform "-chdir=$p" output -raw frontend_deploy_role_arn)
+gh variable set DEV_COGNITO_USER_POOL_ID     --repo $r --body (terraform "-chdir=$p" output -raw cognito_user_pool_id)
+gh variable set DEV_COGNITO_CLIENT_ID        --repo $r --body (terraform "-chdir=$p" output -raw cognito_app_client_id)
+gh variable list --repo $r
+#   DEV_로 시작하는 줄 5개가 나오면 성공
+```
+
+**3) `/api/*`를 지금 클러스터의 ALB로 맞추기.** 클러스터가 있을 때만 한다. 월요일 자동 생성 때는 워크플로가 알아서 한다.
+
+```powershell
+gh workflow run dev-cluster.yml --repo sesac-freshlink/infra -f action=api-origin
+gh run watch --repo sesac-freshlink/infra (gh run list --repo sesac-freshlink/infra --workflow dev-cluster.yml --limit 1 --json databaseId --jq ".[0].databaseId")
+#   초록 체크로 끝나고 요약에 "CloudFront ... /api/* 오리진: ... → k8s-freshlin-gateway-...elb.amazonaws.com"이 나오면 성공
+```
+
+**4) frontend PR 합치기.** `frontend` 레포의 `frontend-deploy` PR을 `dev`에 합친다. 합치는 순간 Actions `frontend-deploy`가 돌고 dev 버킷에 올린다.
+
+- https://github.com/sesac-freshlink/frontend/actions 에서 `frontend-deploy`가 초록 체크면 성공
+- 빨간 X면 실행을 누르고 빨간 단계 이름을 스레드에 붙여 넣는다
+
+**5) 확인.**
+
+```powershell
+$url = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+(Invoke-WebRequest "$url/owner/inventory").StatusCode
+#   200이 나오면 성공 (SPA 경로도 index.html을 준다)
+try { Invoke-RestMethod "$url/api/members/me" } catch { $_.Exception.Response.StatusCode.value__ }
+#   401이 나오면 성공 (토큰 없이 CloudFront → ALB → gateway까지 닿았다)
+#   502·504면 3)을 다시 하고, 403이면 아직 오리진이 버킷을 가리키는 것이다
+```
+
+브라우저로 주소를 열어 점주 시드 계정으로 로그인되면 할 일 13의 배포 부분이 끝난다.
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

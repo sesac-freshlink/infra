@@ -49,6 +49,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 할 일 3에서 정한 것: 개발자별 큐는 `<env>-<아이디>-inventory-commands.fifo` 등(`QUEUE_PREFIX` `<env>-<아이디>-`), DLQ `...-dlq(.fifo)`, maxReceiveCount 3. 앱 DB 비밀 `freshlink-<env>-<서비스>-db`(JSON host·port·dbname·username·password), 스키마 `member`·`inventory`·`orders`, 사용자 `*_app`.
 - 할 일 7에서 정한 것: IRSA Role은 cluster 묶음(`modules/irsa`, OIDC 공급자가 클러스터와 같이 생기고 지워진다). 켜고 끄기 워크플로 Role은 persistent 묶음 `freshlink-<env>-cluster-actions`(infra `main`만 신뢰, PowerUserAccess + `freshlink-<env>-*` IAM만). 클러스터·노드 그룹 이름은 persistent가 정하고 cluster가 remote state로 읽는다.
 - 할 일 8·9에서 정한 것: ArgoCD root Application은 cluster 묶음이 `charts/argocd-root`로 등록하고, 계정마다 다른 값(ECR 주소, 서비스 IRSA Role ARN, `AWS_REGION`·`COGNITO_ISSUER_URI`·`COGNITO_CLIENT_ID`·`COGNITO_USER_POOL_ID`)을 넘긴다. gitops는 공개 레포라 이 값을 적지 않는다. root·서비스 Application에는 finalizer를 두지 않는다(금요일 삭제 때 ArgoCD 컨트롤러를 먼저 멈춘다).
+- 할 일 13에서 정한 것: 프론트는 persistent `modules/frontend`(S3·CloudFront·배포 Role `freshlink-<env>-frontend-deploy`, frontend 레포 한 브랜치만). ALB 주소는 클러스터마다 바뀌어서 CloudFront `/api/*` 오리진은 `scripts/sync-api-origin.sh`(dev-cluster.yml create·`api-origin`)가 맞추고 Terraform은 `ignore_changes = [origin]`.
 - 정하지 않은 값은 지어내지 않는다: prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
 
 ---
@@ -61,7 +62,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 | 상태 | S3 `freshlink-tfstate-<계정ID 끝 4자리>`, 키 5개 `global`, `dev/persistent`, `dev/cluster`, `prod/persistent`, `prod/cluster` (+ `/terraform.tfstate`), S3 잠금 파일(`use_lockfile`) |
 | 컴퓨팅 | 환경마다 EKS `freshlink-<env>-eks`, 관리형 노드 그룹 t3.large × 2 (최대 3) |
 | 데이터·메시징 | 환경마다 RDS MySQL 8.4 db.t4g.small(`freshlink-<env>-mysql`)과 SSM 접속용 t4g.nano(public-a, 공인 IP, 인바운드 없음. NAT 없이 SSM에 닿게), SQS `<env>-inventory-commands.fifo`·`<env>-inventory-results`·DLQ 2개(dev는 개발자별 큐 추가) |
-| 프론트 | 환경마다 S3 + CloudFront(OAC) + ACM(us-east-1) |
+| 프론트 | 환경마다 S3 + CloudFront(OAC), `/api/*` → gateway ALB. 도메인이 없어 ACM 없음(기본 `*.cloudfront.net`) |
 | 인증 | 환경마다 Cognito User Pool `freshlink-<env>-users` (그룹 OWNER·CUSTOMER, `custom:storeId`) |
 | 비밀 | Secrets Manager + External Secrets Operator |
 | 켜고 끄기 | EventBridge Scheduler (RDS·nano·노드 수, 환경별 `persistent`에 정의) + GitHub Actions (NAT·`cluster` 묶음, `env` 입력) |

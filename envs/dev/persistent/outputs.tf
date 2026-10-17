@@ -122,3 +122,23 @@ output "cluster_actions_role_arn" {
   description = "켜고 끄기 워크플로 Role ARN (infra 레포 Actions 비밀 AWS_DEV_CLUSTER_ROLE_ARN, cluster 묶음 관리자)"
   value       = module.cluster_actions.role_arn
 }
+
+output "frontend_bucket" {
+  description = "dev 프론트 버킷 (frontend 레포 변수 FRONTEND_BUCKET)"
+  value       = module.frontend.bucket_name
+}
+
+output "frontend_distribution_id" {
+  description = "dev CloudFront 배포 ID (frontend 레포 변수 FRONTEND_DISTRIBUTION_ID)"
+  value       = module.frontend.distribution_id
+}
+
+output "frontend_url" {
+  description = "dev 프론트 주소. /api/*는 gateway로 간다"
+  value       = module.frontend.url
+}
+
+output "frontend_deploy_role_arn" {
+  description = "frontend 레포 frontend-deploy.yml이 맡는 Role (변수 FRONTEND_DEPLOY_ROLE_ARN)"
+  value       = module.frontend.deploy_role_arn
+}

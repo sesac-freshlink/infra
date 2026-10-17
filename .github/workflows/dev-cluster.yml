@@ -13,10 +13,10 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create = 클러스터 만들기(NAT·노드 2대 포함), destroy = 클러스터 지우기, nat-on / nat-off = NAT만"
+        description: "create = 클러스터 만들기(NAT·노드 2대 포함), destroy = 클러스터 지우기, nat-on / nat-off = NAT만, api-origin = CloudFront /api를 지금 ALB로 맞추기만"
         type: choice
         required: true
-        options: [create, destroy, nat-on, nat-off]
+        options: [create, destroy, nat-on, nat-off, api-origin]
 
 # 두 작업이 같은 state를 동시에 건드리지 않게 한 줄로 세운다.
 concurrency:
@@ -110,6 +110,14 @@ jobs:
           kubectl get nodes
           kubectl -n argocd get pods
           echo "ArgoCD 준비됨" >> "$GITHUB_STEP_SUMMARY"
+
+      # 클러스터를 새로 만들면 gateway ALB 주소가 바뀐다. 프론트 CloudFront의 /api/* 오리진을 새 주소로 맞춘다(할 일 13).
+      # 클러스터를 PC에서 직접 apply했을 때는 수동 버튼 api-origin으로 이 단계만 돌린다.
+      - name: CloudFront /api 오리진 맞추기
+        if: steps.what.outputs.action == 'create' || (steps.what.outputs.action == 'api-origin' && steps.cluster.outputs.exists == 'true')
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+          scripts/sync-api-origin.sh dev | tee -a "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------- NAT
       - name: NAT 만들기·지우기
