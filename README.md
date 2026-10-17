@@ -111,9 +111,9 @@ infra/
 
 - [x] `modules/scheduler` (`envs/<env>/persistent`, 할 일 3): RDS·nano 일정 6개(평일 09:00 켜기, 평일 21:00 끄기, 매일 23:00 안전 끄기), 시간대 `Asia/Seoul`, universal target `aws-sdk:rds:startDBInstance`·`stopDBInstance`·`ec2:startInstances`·`stopInstances`
 - [x] 스케줄러 IAM Role `freshlink-<env>-scheduler-role`: `freshlink-<env>-mysql`과 nano 한 대에 대한 시작·중지만
-- [x] 노드 그룹 일정(화~금 09:10 desired 2, 월~목 21:00·월~금 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 7)
+- [x] 노드 그룹 일정(화·수·목·금 09:10 desired 2, 월·화·수·목 21:00 desired 0, 평일 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 7)
 - [x] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
-- [x] GitHub Actions `.github/workflows/dev-cluster.yml`: 월 클러스터 생성, 화~금 NAT 생성, 월~목 NAT 삭제, 금 클러스터 삭제(Ingress·PVC 먼저 정리), 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch) (할 일 7)
+- [x] GitHub Actions `.github/workflows/dev-cluster.yml`: 월요일 클러스터 생성, 화·수·목·금 NAT 생성, 월·화·수·목 NAT 삭제, 금요일 클러스터 삭제(Ingress·PVC 먼저 정리), 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch) (할 일 7)
 
 ## 할 일: 인증 (Cognito, C-01·C-02·C-03)
 
@@ -477,7 +477,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -LocalPort 3307
 | Helm | ArgoCD 10.10.5, AWS Load Balancer Controller 3.6.0, metrics-server 3.14.0, External Secrets Operator 2.13.0 | 관측성·앱은 ArgoCD가 설치한다(할 일 9) |
 | 기타 | 기본 StorageClass `gp3`, RDS 보안 그룹에 EKS → 3306 | |
 
-`envs/dev/persistent`에는 노드 그룹 일정 3개(화~금 09:10 2대, 월~목 21:00 0대, 월~금 23:00 0대)와 워크플로 Role `freshlink-dev-cluster-actions`가 더해진다.
+`envs/dev/persistent`에는 노드 그룹 일정 3개(화·수·목·금 09:10 2대, 월·화·수·목 21:00 0대, 평일 23:00 0대)와 워크플로 Role `freshlink-dev-cluster-actions`가 더해진다.
 
 비용: 켜져 있는 동안 시간당 약 0.37 USD(EKS 0.10, 노드 2대 0.21, NAT 0.06). 일정대로 돌면 aws-리소스-계획.md 6-6 D안(약 195 USD) 안이다.
 
