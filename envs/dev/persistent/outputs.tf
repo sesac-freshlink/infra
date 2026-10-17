@@ -107,3 +107,18 @@ output "seed_accounts_secret_name" {
   description = "시드 계정 자격 비밀 이름 (scripts/seed-cognito.ps1이 값을 넣는다)"
   value       = module.cognito.seed_accounts_secret_name
 }
+
+output "eks_cluster_name" {
+  description = "EKS 클러스터 이름 (cluster 묶음이 이 이름으로 만든다)"
+  value       = local.eks_cluster_name
+}
+
+output "eks_node_group_name" {
+  description = "노드 그룹 이름 (cluster 묶음이 이 이름으로 만든다)"
+  value       = local.eks_node_group_name
+}
+
+output "cluster_actions_role_arn" {
+  description = "켜고 끄기 워크플로 Role ARN (infra 레포 Actions 비밀 AWS_DEV_CLUSTER_ROLE_ARN, cluster 묶음 관리자)"
+  value       = module.cluster_actions.role_arn
+}

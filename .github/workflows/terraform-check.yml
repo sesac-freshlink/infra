@@ -1,0 +1,32 @@
+# PR 확인: 형식(fmt)과 문법(validate). AWS 자격 증명 없이 돈다(plan은 PR 본문에 사람이 붙인다).
+name: terraform-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform validate
+        run: |
+          for root in global envs/dev/persistent envs/dev/cluster envs/prod/persistent envs/prod/cluster; do
+            echo "== $root"
+            terraform -chdir=$root init -backend=false -input=false >/dev/null
+            terraform -chdir=$root validate
+          done

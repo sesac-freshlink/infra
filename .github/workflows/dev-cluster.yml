@@ -1,0 +1,213 @@
+# dev 클러스터 켜고 끄기 (aws-리소스-계획.md 6-5). Terraform으로 envs/dev/cluster를 만들고 지운다.
+# RDS·SSM 접속용 인스턴스·노드 수는 EventBridge Scheduler(envs/dev/persistent)가 맡는다.
+# 예약 작업은 UTC다. 한국 시각 - 9시간. 몇 분 늦게 돌 수 있다.
+name: dev-cluster
+
+on:
+  schedule:
+    - cron: "40 23 * * 0"  # 월 08:40 클러스터 생성 (UTC 일요일 23:40)
+    - cron: "0 0 * * 2-5"  # 화~금 09:00 NAT 생성
+    - cron: "10 12 * * 1-4" # 월~목 21:10 NAT 삭제
+    - cron: "0 12 * * 5"   # 금 21:00 클러스터 삭제
+    - cron: "0 14 * * *"   # 매일 23:00 NAT가 남아 있으면 삭제
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "create = 클러스터 만들기(NAT·노드 2대 포함), destroy = 클러스터 지우기, nat-on / nat-off = NAT만"
+        type: choice
+        required: true
+        options: [create, destroy, nat-on, nat-off]
+
+# 두 작업이 같은 state를 동시에 건드리지 않게 한 줄로 세운다.
+concurrency:
+  group: dev-cluster
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # GitHub OIDC로 AWS Role을 맡는다
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  CLUSTER: freshlink-dev-eks
+  NODEGROUP: freshlink-dev-nodes
+  ROOT: envs/dev/cluster
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: 할 일 고르기
+        id: what
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT: ${{ inputs.action }}
+        run: |
+          case "${SCHEDULE}" in
+            "40 23 * * 0")  action=create ;;
+            "0 0 * * 2-5")  action=nat-on ;;
+            "10 12 * * 1-4") action=nat-off ;;
+            "0 12 * * 5")   action=destroy ;;
+            "0 14 * * *")   action=nat-off ;;
+            *)              action="${INPUT}" ;;
+          esac
+          [ -n "${action}" ] || { echo "할 일을 정하지 못했다"; exit 1; }
+          echo "action=${action}" >> "$GITHUB_OUTPUT"
+          echo "### dev-cluster: ${action}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_CLUSTER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 7200
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: |
+          account=$(aws sts get-caller-identity --query Account --output text)
+          # global/tfstate.tf와 같은 규칙: freshlink-tfstate-<계정 ID 끝 4자리>
+          echo "bucket = \"freshlink-tfstate-${account:8:4}\"" > backend.hcl
+          terraform -chdir=$ROOT init -input=false -backend-config=../../../backend.hcl
+
+      - name: 클러스터가 있는지
+        id: cluster
+        run: |
+          if aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ---------------------------------------------------------------- create
+      - name: 클러스터 만들기
+        if: steps.what.outputs.action == 'create'
+        run: terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=true
+
+      - name: 노드 2대로 맞추기
+        if: steps.what.outputs.action == 'create'
+        run: |
+          # 이미 있던 클러스터는 desired가 0일 수 있다(Terraform은 desired를 무시한다)
+          desired=$(aws eks describe-nodegroup --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP" \
+            --query nodegroup.scalingConfig.desiredSize --output text)
+          if [ "$desired" -lt 2 ]; then
+            aws eks update-nodegroup-config --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP" \
+              --scaling-config desiredSize=2
+            aws eks wait nodegroup-active --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP"
+          fi
+
+      - name: ArgoCD가 떴는지
+        if: steps.what.outputs.action == 'create'
+        run: |
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+          kubectl -n argocd rollout status deploy/argocd-server --timeout=10m
+          kubectl get nodes
+          kubectl -n argocd get pods
+          echo "ArgoCD 준비됨" >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------- NAT
+      - name: NAT 만들기·지우기
+        if: steps.what.outputs.action == 'nat-on' || steps.what.outputs.action == 'nat-off'
+        env:
+          ACTION: ${{ steps.what.outputs.action }}
+          EXISTS: ${{ steps.cluster.outputs.exists }}
+        run: |
+          # 클러스터가 없으면(주말) 아무것도 하지 않는다. 여기서 apply하면 클러스터 전체가 생긴다.
+          if [ "$EXISTS" != "true" ]; then
+            echo "클러스터가 없어 건너뛴다" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          enabled=true; [ "$ACTION" = "nat-off" ] && enabled=false
+          terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=$enabled
+
+      # ---------------------------------------------------------------- destroy
+      - name: 지우기 전 정리 (ALB·EBS)
+        if: steps.what.outputs.action == 'destroy' && steps.cluster.outputs.exists == 'true'
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+
+          # ArgoCD가 Ingress·PVC를 다시 만들지 않게 먼저 멈춘다.
+          kubectl -n argocd scale statefulset argocd-application-controller --replicas=0 || true
+
+          ingresses=$(kubectl get ingress -A -o name | wc -l)
+          lb_svcs=$(kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | grep -c . || true)
+          pvcs=$(kubectl get pvc -A -o name | wc -l)
+          echo "Ingress ${ingresses}, LoadBalancer Service ${lb_svcs}, PVC ${pvcs}"
+          if [ $((ingresses + lb_svcs + pvcs)) -eq 0 ]; then
+            echo "정리할 것 없음"
+            exit 0
+          fi
+
+          # ALB·EBS는 클러스터 안의 컨트롤러가 지운다. 컨트롤러가 돌려면 노드(와 이미지 받을 NAT)가 있어야 한다.
+          if [ "$(terraform -chdir=$ROOT output -raw nat_enabled)" != "true" ]; then
+            terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=true
+          fi
+          desired=$(aws eks describe-nodegroup --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP" \
+            --query nodegroup.scalingConfig.desiredSize --output text)
+          if [ "$desired" -lt 2 ]; then
+            aws eks update-nodegroup-config --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP" \
+              --scaling-config desiredSize=2
+            aws eks wait nodegroup-active --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP"
+            for i in $(seq 1 60); do
+              [ "$(kubectl get nodes --no-headers 2>/dev/null | grep -c ' Ready ')" -ge 1 ] && break
+              sleep 10
+            done
+            kubectl -n kube-system rollout status deploy/aws-load-balancer-controller --timeout=10m
+            kubectl -n kube-system rollout status deploy/ebs-csi-controller --timeout=10m
+          fi
+
+          kubectl delete ingress -A --all --timeout=5m
+          kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace} {.metadata.name}{"\n"}{end}' \
+            | while read -r ns name; do [ -n "$ns" ] && kubectl -n "$ns" delete svc "$name" --timeout=5m; done
+          kubectl delete pvc -A --all --timeout=5m
+
+          # 컨트롤러가 ALB와 EBS를 실제로 지울 때까지 기다린다(최대 10분)
+          for i in $(seq 1 60); do
+            albs=$(aws resourcegroupstaggingapi get-resources --resource-type-filters elasticloadbalancing:loadbalancer \
+              --tag-filters "Key=elbv2.k8s.aws/cluster,Values=$CLUSTER" --query 'length(ResourceTagMappingList)' --output text)
+            pvs=$(kubectl get pv --no-headers 2>/dev/null | wc -l)
+            echo "남은 ALB ${albs}, PV ${pvs}"
+            [ "$albs" -eq 0 ] && [ "$pvs" -eq 0 ] && break
+            sleep 10
+          done
+
+      - name: 클러스터 지우기
+        if: steps.what.outputs.action == 'destroy'
+        run: terraform -chdir=$ROOT destroy -input=false -auto-approve
+
+      - name: 남은 리소스 확인
+        if: steps.what.outputs.action == 'destroy'
+        run: |
+          set -uo pipefail
+          vpc=$(aws ec2 describe-vpcs --filters Name=tag:Name,Values=freshlink-dev-vpc --query 'Vpcs[0].VpcId' --output text)
+          albs=$(aws resourcegroupstaggingapi get-resources --tag-filters "Key=elbv2.k8s.aws/cluster,Values=$CLUSTER" \
+            --query 'ResourceTagMappingList[].ResourceARN' --output text)
+          sgs=$(aws ec2 describe-security-groups --filters "Name=tag:elbv2.k8s.aws/cluster,Values=$CLUSTER" \
+            --query 'SecurityGroups[].GroupId' --output text)
+          vols=$(aws ec2 describe-volumes --filters Name=status,Values=available Name=tag-key,Values=CSIVolumeName \
+            --query 'Volumes[].VolumeId' --output text)
+          enis=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$vpc" Name=status,Values=available \
+            --query 'NetworkInterfaces[].NetworkInterfaceId' --output text)
+          nats=$(aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$vpc" Name=state,Values=pending,available \
+            --query 'NatGateways[].NatGatewayId' --output text)
+          {
+            echo "| 종류 | 남은 것 |"
+            echo "| --- | --- |"
+            echo "| ALB·대상 그룹 | ${albs:-없음} |"
+            echo "| LB 보안 그룹 | ${sgs:-없음} |"
+            echo "| EBS 볼륨 | ${vols:-없음} |"
+            echo "| ENI | ${enis:-없음} |"
+            echo "| NAT | ${nats:-없음} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${albs}${sgs}${vols}${enis}${nats}" ]; then
+            echo "::error::클러스터를 지운 뒤 남은 리소스가 있다. 요약 표를 보고 콘솔에서 지운다"
+            exit 1
+          fi
+          echo "남은 리소스 없음"
