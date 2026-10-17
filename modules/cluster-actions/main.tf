@@ -104,6 +104,14 @@ data "aws_iam_policy_document" "iam" {
       values   = ["eks.amazonaws.com", "eks-nodegroup.amazonaws.com", "elasticloadbalancing.amazonaws.com", "autoscaling.amazonaws.com"]
     }
   }
+
+  # EKS CreateNodegroup은 AWSServiceRoleForAmazonEKSNodegroup이 있는지 호출자 권한으로 iam:GetRole을 먼저 부른다.
+  # 서비스 연결 Role 읽기만 허용한다(수정·삭제 없음).
+  statement {
+    sid       = "ReadServiceLinkedRoles"
+    actions   = ["iam:GetRole"]
+    resources = ["${local.iam_prefix}:role/aws-service-role/*"]
+  }
 }
 
 resource "aws_iam_policy" "iam" {
