@@ -1,0 +1,11 @@
+# 값은 envs/<env>/cluster/helm.tf가 Terraform 출력으로 채운다. 여기는 키 모양만 적는다.
+env: ""                # dev | prod. gitops envs/<env>/ 를 고른다
+gitops:
+  repoURL: https://github.com/sesac-freshlink/gitops.git
+  revision: main
+  path: argocd/apps
+# 클러스터·계정마다 다른 값. gitops 레포(공개)에 적지 않고 여기서 넘긴다.
+cluster:
+  imageRegistry: ""    # <계정>.dkr.ecr.ap-northeast-2.amazonaws.com
+  irsaRoleArns: {}     # 서비스 이름 → IRSA Role ARN
+  env: {}              # 모든 서비스 파드에 넣을 환경 변수 (AWS_REGION, COGNITO_ISSUER_URI, COGNITO_CLIENT_ID)

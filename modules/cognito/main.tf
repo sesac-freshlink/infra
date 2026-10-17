@@ -91,8 +91,11 @@ resource "aws_cognito_user_pool_client" "web" {
   name         = "${var.name_prefix}-web"
   user_pool_id = aws_cognito_user_pool.this.id
 
-  generate_secret               = false
-  explicit_auth_flows           = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  generate_secret = false
+  explicit_auth_flows = concat(
+    ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+    var.admin_password_auth ? ["ALLOW_ADMIN_USER_PASSWORD_AUTH"] : [],
+  )
   prevent_user_existence_errors = "ENABLED"
   enable_token_revocation       = true
 

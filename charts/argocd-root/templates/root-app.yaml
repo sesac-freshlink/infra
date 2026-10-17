@@ -1,0 +1,29 @@
+# App of Apps의 시작점. 클러스터를 새로 만들면 Terraform이 ArgoCD 설치 직후 이것만 등록하고,
+# 나머지(서비스 5개, ClusterSecretStore)는 gitops 레포를 읽어 저절로 올라온다.
+# finalizer를 두지 않는다: 금요일 삭제 때 ArgoCD 컨트롤러를 먼저 멈추므로, finalizer가 있으면 지우기가 끝나지 않는다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: {{ .Release.Namespace }}
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.gitops.repoURL }}
+    targetRevision: {{ .Values.gitops.revision }}
+    path: {{ .Values.gitops.path }}
+    helm:
+      valuesObject:
+        env: {{ required "env가 필요하다" .Values.env | quote }}
+        gitops:
+          repoURL: {{ .Values.gitops.repoURL }}
+          revision: {{ .Values.gitops.revision }}
+        cluster:
+          {{- toYaml .Values.cluster | nindent 10 }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Release.Namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

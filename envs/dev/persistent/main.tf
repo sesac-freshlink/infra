@@ -54,7 +54,8 @@ module "cognito" {
   source = "../../../modules/cognito"
 
   name_prefix                 = local.name_prefix
-  secret_recovery_window_days = 0 # dev는 지우고 다시 만들 때 이름이 바로 비게
+  secret_recovery_window_days = 0    # dev는 지우고 다시 만들 때 이름이 바로 비게
+  admin_password_auth         = true # gateway 401·403 시험 토큰을 PowerShell로 받는다(README 4-7)
 }
 
 module "messaging" {

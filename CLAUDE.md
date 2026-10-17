@@ -48,7 +48,8 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 팀원 IAM 권한은 이름·태그로 dev를 가려낸다: 큐 `dev-*`, 비밀 `freshlink-dev-*`, Cognito·SSM 인스턴스는 태그 `Environment=dev`(provider `default_tags`), 로그 그룹 이름에 `freshlink-dev-`. 이 규칙을 어기는 이름을 만들지 않는다.
 - 할 일 3에서 정한 것: 개발자별 큐는 `<env>-<아이디>-inventory-commands.fifo` 등(`QUEUE_PREFIX` `<env>-<아이디>-`), DLQ `...-dlq(.fifo)`, maxReceiveCount 3. 앱 DB 비밀 `freshlink-<env>-<서비스>-db`(JSON host·port·dbname·username·password), 스키마 `member`·`inventory`·`orders`, 사용자 `*_app`.
 - 할 일 7에서 정한 것: IRSA Role은 cluster 묶음(`modules/irsa`, OIDC 공급자가 클러스터와 같이 생기고 지워진다). 켜고 끄기 워크플로 Role은 persistent 묶음 `freshlink-<env>-cluster-actions`(infra `main`만 신뢰, PowerUserAccess + `freshlink-<env>-*` IAM만). 클러스터·노드 그룹 이름은 persistent가 정하고 cluster가 remote state로 읽는다.
-- 정하지 않은 값은 지어내지 않는다: 서비스 CI가 맡는 OIDC Role 이름·개수·권한 범위(할 일 8), prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
+- 할 일 8·9에서 정한 것: ArgoCD root Application은 cluster 묶음이 `charts/argocd-root`로 등록하고, 계정마다 다른 값(ECR 주소, 서비스 IRSA Role ARN, `AWS_REGION`·`COGNITO_ISSUER_URI`·`COGNITO_CLIENT_ID`·`COGNITO_USER_POOL_ID`)을 넘긴다. gitops는 공개 레포라 이 값을 적지 않는다. root·서비스 Application에는 finalizer를 두지 않는다(금요일 삭제 때 ArgoCD 컨트롤러를 먼저 멈춘다).
+- 정하지 않은 값은 지어내지 않는다: prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
 
 ---
 
@@ -83,7 +84,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 ✅ 예외: ECR·Helm 릴리스·Deployment·ServiceAccount는 레포 이름 그대로. global 공용 리소스에는 env를 붙이지 않는다
 ✅ IAM 최소 권한, 자기 환경 리소스만 (IRSA·External Secrets·스케줄러). "*"는 근거를 주석으로
 ✅ 팀원 그룹 freshlink-developers는 dev 리소스만. prod 권한(읽기 포함)을 주지 않는다
-✅ GitHub OIDC Role: dev 브랜치가 맡을 수 있는 Role에는 prod 쓰기 권한(prod 버킷 쓰기, prod terraform 실행 등)을 주지 않는다. Role 개수·권한 범위는 할 일 9·10에서 정함
+✅ GitHub OIDC Role: dev 브랜치가 맡을 수 있는 Role에는 prod 쓰기 권한(prod 버킷 쓰기, prod terraform 실행 등)을 주지 않는다. 서비스 CI는 global `freshlink-ci-ecr-push` 하나(서비스 레포 5개 dev·main, ECR 푸시만, 할 일 8). sub는 `repo:<조직>/<레포>:...`와 ID가 붙은 `repo:<조직>@<ID>/<레포>@<ID>:...` 둘 다 받는다(StringLike)
 ✅ provider·모듈 버전 고정. 변수에 description·type
 ✅ 시간당 과금 리소스 추가·크기 변경은 비용 영향(aws-리소스-계획.md 6-6, dev·prod 합계)을 PR에 적는다
 ```

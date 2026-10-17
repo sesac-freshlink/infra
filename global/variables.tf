@@ -44,3 +44,9 @@ variable "ecr_repositories" {
   type        = set(string)
   default     = ["gateway", "member-service", "inventory-service", "order-service", "logistics-simulator"]
 }
+
+variable "github_org" {
+  description = "GitHub 조직 이름. 서비스 CI Role(github-ci.tf)이 이 조직의 서비스 레포만 믿는다"
+  type        = string
+  default     = "sesac-freshlink"
+}

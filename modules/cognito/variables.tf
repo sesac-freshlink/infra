@@ -48,3 +48,9 @@ variable "secret_recovery_window_days" {
   type        = number
   default     = 7
 }
+
+variable "admin_password_auth" {
+  description = "true면 앱 클라이언트에 ALLOW_ADMIN_USER_PASSWORD_AUTH를 켠다. IAM 자격(cognito-idp:AdminInitiateAuth)이 있어야만 쓰는 흐름이라 브라우저에서는 쓸 수 없다. dev에서 PowerShell로 시험 토큰을 받을 때만 켠다"
+  type        = bool
+  default     = false
+}

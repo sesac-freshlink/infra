@@ -1,4 +1,4 @@
-# Terraform이 Helm으로 설치하는 4개(aws-리소스-계획.md 8장). 관측성 스택과 앱은 ArgoCD가 gitops 레포에서 설치한다.
+# Terraform이 Helm으로 설치하는 4개(aws-리소스-계획.md 8장)와 ArgoCD root Application. 관측성 스택과 앱은 ArgoCD가 gitops 레포에서 설치한다.
 # 차트 버전은 고정한다. 모두 노드·애드온이 준비된 뒤(module.eks 전체) 설치하고, destroy 때는 클러스터보다 먼저 지운다.
 
 resource "helm_release" "aws_load_balancer_controller" {
@@ -90,4 +90,32 @@ resource "kubernetes_storage_class_v1" "gp3" {
   }
 
   depends_on = [module.eks]
+}
+
+# App of Apps 시작점(root Application) 등록. 이 뒤로 클러스터 안의 앱은 전부 gitops 레포가 정한다.
+# 계정·클러스터마다 다른 값(ECR 주소, IRSA Role ARN, Cognito 주소·클라이언트 ID)은 공개 레포인 gitops에 적지 않고 여기서 넘긴다.
+# ArgoCD(Application CRD)와 External Secrets Operator(ClusterSecretStore CRD)가 먼저 떠 있어야 한다.
+resource "helm_release" "argocd_root" {
+  name      = "argocd-root"
+  namespace = "argocd"
+  chart     = "${path.module}/../../../charts/argocd-root"
+
+  values = [yamlencode({
+    env = "dev"
+    cluster = {
+      imageRegistry = "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com"
+      irsaRoleArns = {
+        for svc in ["member-service", "inventory-service", "order-service", "logistics-simulator"] :
+        svc => module.irsa.role_arns[svc]
+      }
+      env = {
+        AWS_REGION           = local.region
+        COGNITO_ISSUER_URI   = local.persistent.cognito_issuer_uri    # gateway 토큰 iss 확인
+        COGNITO_CLIENT_ID    = local.persistent.cognito_app_client_id # gateway 토큰 aud 확인
+        COGNITO_USER_POOL_ID = local.persistent.cognito_user_pool_id  # member-service 점포 등록(AD-01)
+      }
+    }
+  })]
+
+  depends_on = [helm_release.argocd, helm_release.external_secrets]
 }
