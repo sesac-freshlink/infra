@@ -13,10 +13,14 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create = 클러스터 만들기(NAT·노드 2대 포함), destroy = 클러스터 지우기, nat-on / nat-off = NAT만, api-origin = CloudFront /api를 지금 ALB로 맞추기만"
+        description: "create = 클러스터 만들기(NAT·노드 2대 포함), destroy = 클러스터 지우기, nat-on / nat-off = NAT만, api-origin = CloudFront /api를 지금 ALB로 맞추기만, unlock = 끊긴 작업이 남긴 state 잠금 풀기"
         type: choice
         required: true
-        options: [create, destroy, nat-on, nat-off, api-origin]
+        options: [create, destroy, nat-on, nat-off, api-origin, unlock]
+      lock_id:
+        description: "unlock일 때만: 실패한 작업 로그 'Lock Info'의 ID"
+        type: string
+        required: false
 
 # 두 작업이 같은 state를 동시에 건드리지 않게 한 줄로 세운다.
 concurrency:
@@ -32,6 +36,7 @@ env:
   CLUSTER: freshlink-dev-eks
   NODEGROUP: freshlink-dev-nodes
   ROOT: envs/dev/cluster
+  STATE_KEY: dev/cluster/terraform.tfstate # versions.tf backend key. 잠금 파일은 뒤에 .tflock이 붙는다
 
 jobs:
   run:
@@ -74,6 +79,7 @@ jobs:
           account=$(aws sts get-caller-identity --query Account --output text)
           # global/tfstate.tf와 같은 규칙: freshlink-tfstate-<계정 ID 끝 4자리>
           echo "bucket = \"freshlink-tfstate-${account:8:4}\"" > backend.hcl
+          echo "TF_BUCKET=freshlink-tfstate-${account:8:4}" >> "$GITHUB_ENV"
           terraform -chdir=$ROOT init -input=false -backend-config=../../../backend.hcl
 
       - name: 클러스터가 있는지
@@ -84,6 +90,27 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # ---------------------------------------------------------------- unlock
+      # 작업이 terraform 도중 취소·강제 종료되면 S3 잠금 파일이 남아 다음 작업이 모두
+      # "Error acquiring the state lock"으로 멈춘다. concurrency로 이 워크플로는 한 번에 하나만 돌므로
+      # 여기서 보이는 잠금은 끊긴 작업이나 PC에서 건 것이다. 잘못 풀지 않게 로그의 잠금 ID를 받아 맞춰 본다.
+      - name: 남은 잠금 풀기
+        if: steps.what.outputs.action == 'unlock'
+        env:
+          LOCK_ID: ${{ inputs.lock_id }}
+        run: |
+          if ! lock=$(aws s3 cp "s3://${TF_BUCKET}/${STATE_KEY}.tflock" - 2>/dev/null); then
+            echo "잠금 없음" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "$lock" | jq .
+          if [ "$(echo "$lock" | jq -r .ID)" != "$LOCK_ID" ]; then
+            echo "::error::lock_id가 지금 잠금 ID와 다르다. 위 내용을 보고 다시 넣는다"
+            exit 1
+          fi
+          terraform -chdir=$ROOT force-unlock -force "$LOCK_ID"
+          echo "잠금 ${LOCK_ID}를 풀었다" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------- create
       - name: 클러스터 만들기
@@ -132,7 +159,9 @@ jobs:
             exit 0
           fi
           enabled=true; [ "$ACTION" = "nat-off" ] && enabled=false
-          terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=$enabled
+          # NAT 세 개만 건드린다. 전체 apply는 destroy가 중간에 끊겨 반쯤 남은 클러스터를 통째로 되살린다.
+          terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=$enabled \
+            -target=aws_eip.nat -target=aws_nat_gateway.this -target=aws_route.app_nat
 
       # ---------------------------------------------------------------- destroy
       - name: 지우기 전 정리 (ALB·EBS)
@@ -140,6 +169,14 @@ jobs:
         run: |
           set -euo pipefail
           aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
+
+          # 앞선 destroy가 중간에 끊겼으면 access entry가 이미 지워져 kubectl이 들어가지 못한다.
+          # Helm(컨트롤러)은 module.eks보다 먼저 지워지므로 이때 클러스터 안에서 정리할 수 있는 것은 없다.
+          # 건너뛰고 남은 ALB·EBS는 '남은 리소스 확인'에 맡긴다.
+          if ! kubectl get namespace kube-system >/dev/null 2>&1; then
+            echo "::warning::kubectl로 클러스터에 들어가지 못한다(앞선 destroy가 access entry까지 지웠다). 정리를 건너뛴다"
+            exit 0
+          fi
 
           # ArgoCD가 Ingress·PVC를 다시 만들지 않게 먼저 멈춘다.
           kubectl -n argocd scale statefulset argocd-application-controller --replicas=0 || true
@@ -168,7 +205,8 @@ jobs:
 
           # ALB·EBS는 클러스터 안의 컨트롤러가 지운다. 컨트롤러가 돌려면 노드(와 이미지 받을 NAT)가 있어야 한다.
           if [ "$(terraform -chdir=$ROOT output -raw nat_enabled)" != "true" ]; then
-            terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=true
+            terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=true \
+              -target=aws_eip.nat -target=aws_nat_gateway.this -target=aws_route.app_nat
           fi
           desired=$(aws eks describe-nodegroup --cluster-name "$CLUSTER" --nodegroup-name "$NODEGROUP" \
             --query nodegroup.scalingConfig.desiredSize --output text)
@@ -242,3 +280,14 @@ jobs:
             exit 1
           fi
           echo "남은 리소스 없음"
+
+      # 취소·시간 초과로 terraform이 강제 종료되면 잠금 파일이 남는다. 이 러너가 건 잠금이면 바로 푼다.
+      # 다른 곳(PC, 다른 작업)이 건 잠금은 건드리지 않는다.
+      - name: 끊긴 작업의 잠금 풀기
+        if: cancelled() || failure()
+        run: |
+          lock=$(aws s3 cp "s3://${TF_BUCKET}/${STATE_KEY}.tflock" - 2>/dev/null) || exit 0
+          if [ "$(echo "$lock" | jq -r .Who)" = "$(whoami)@$(hostname)" ]; then
+            terraform -chdir=$ROOT force-unlock -force "$(echo "$lock" | jq -r .ID)"
+            echo "이 작업이 남긴 state 잠금을 풀었다" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
