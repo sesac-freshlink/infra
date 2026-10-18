@@ -567,6 +567,7 @@ terraform "-chdir=envs/dev/cluster" apply "-var=nat_enabled=false"
 | 노드 그룹 `CREATE_FAILED` `NodeCreationFailure` | NAT 경로가 없다. 밤에 `nat_enabled=false`로 만들었는지 본다 |
 | 워크플로 `Could not assume role` | 4)의 비밀 이름·값을 다시 넣는다. `main`이 아닌 브랜치에서 돌리면 거부된다. 레포 OIDC sub 형식이 바뀌었으면 `modules/cluster-actions` `github_sub_prefixes`를 맞춘다 |
 | 워크플로 요약 표에 남은 것이 있다 | 표의 ID를 스레드에 붙여 넣는다. ALB가 남았으면 다시 `destroy`를 돌린다 |
+| 워크플로 `Error acquiring the state lock` (`PreconditionFailed`) | 앞선 작업이 terraform 도중 취소돼 잠금 파일이 남았다. 로그 `Lock Info`의 `ID`를 복사해 action `unlock`, `lock_id`에 붙여 넣고 돌린 뒤 원래 작업을 다시 돌린다 ([기록](docs/troubleshooting/2026-10-17-dev-cluster-state-잠금-남음.md)) |
 
 ### 4-7. CI·dev 배포·gateway 확인 (할 일 8·9·10, 김진아)
 
