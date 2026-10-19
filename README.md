@@ -27,6 +27,7 @@
 | --- | --- | --- |
 | state | S3 `freshlink-tfstate-<계정ID 끝 4자리>` | 버전 관리, 암호화, 퍼블릭 차단, HTTPS만, 지난 버전 90일 보관, `prevent_destroy` |
 | 비용 | AWS Budgets `freshlink-monthly`, 비용 이상 탐지 `freshlink-services` | 10월 160 + 11월 200 = 360 USD. 50·80·100%와 예측 100% 초과 시 메일. 크레딧은 빼고 실제 사용 금액으로 본다 |
+| 비용 메일 | Lambda `freshlink-cost-report`, SNS 주제 `freshlink-cost-report`, EventBridge Scheduler 매일 09:00 | 어제 비용·이번 달 누계·총 비용을 매일 아침 세 사람에게 보낸다 (4-9) |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | 태그 덮어쓰기 금지, push 때 스캔, 최근 30개 보관 |
 | CI 인증 | GitHub OIDC 공급자 | 이 공급자를 믿는 Role은 할 일 10에서 만든다 |
 | 팀원 | IAM 그룹 `freshlink-developers`, 사용자 `freshlink-taewoo`·`freshlink-kyungwoo`·`freshlink-younghoon` | dev 리소스만 (5장) |
@@ -79,12 +80,13 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 infra/
 ├── backend.hcl.example  # state 버킷 이름. backend.hcl로 복사해서 쓴다 (커밋 안 함)
 ├── scripts/             # PowerShell: DB 포트 포워딩, 스키마·앱 사용자 만들기, 토스 키 넣기 (4-4), 시드 (4-5)
-├── global/              # 두 환경 공용 루트 (state 버킷, Budgets, ECR, OIDC, 팀원 IAM)
+├── global/              # 두 환경 공용 루트 (state 버킷, Budgets, 비용 메일, ECR, OIDC, 팀원 IAM)
 ├── envs/
 │   ├── dev/{persistent,cluster}/
 │   └── prod/{persistent,cluster}/
 └── modules/
     ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
+    ├── cost-report/     # 매일 아침 비용 메일 (Lambda, SNS 이메일 구독, Scheduler)
     ├── ecr/             # 리포지토리, 보관 개수 정책
     ├── network/         # VPC, 서브넷 6개(EKS 태그), IGW, 라우팅, S3 Gateway 엔드포인트 (NAT는 cluster 묶음)
     ├── rds/             # RDS MySQL 8.4, 보안 그룹, 앱 DB 비밀 3개, SSM 접속용 nano
@@ -167,7 +169,7 @@ state 버킷이 아직 없어서 처음에는 PC에 state를 두고 만든 뒤, 
 ```powershell
 $env:AWS_PROFILE = "freshlink-admin"
 
-# 1) 알림 메일 넣기: 열리는 메모장에서 팀원 4명(김진아·이태우·김경우·문영훈) 메일을 넣고 저장
+# 1) 알림 메일 넣기: 열리는 메모장에서 팀원 3명(김진아·이태우·김경우) 메일을 넣고 저장
 cd global
 Copy-Item terraform.tfvars.example terraform.tfvars
 notepad terraform.tfvars
@@ -225,7 +227,11 @@ notepad global\terraform.tfvars    # budget_test_alert = true 로 바꾸고 저�
 terraform "-chdir=global" apply      # freshlink-alert-test 예산(1 USD, 1% 초과 시 메일) 생성
 ```
 
-이번 달 실제 사용 금액이 0.01 USD를 넘으면 네 사람에게 메일이 간다. Budgets는 하루 몇 번만 평가하므로 메일까지 몇 시간 걸릴 수 있다. 네 사람이 메일을 받으면 `budget_test_alert = false`로 돌리고 다시 apply해서 시험 예산을 지운다.
+이번 달 실제 사용 금액이 0.01 USD를 넘으면 세 사람에게 메일이 간다. Budgets는 하루 몇 번만 평가하므로 메일까지 몇 시간 걸릴 수 있다. 세 사람이 메일을 받으면 `budget_test_alert = false`로 돌리고 다시 apply해서 시험 예산을 지운다.
+
+- 예산 알림은 기준을 처음 넘는 순간 **한 달에 한 번만** 간다. 시험 예산을 켜 둔 채 기다려도 다음 메일은 다음 달 1일 뒤에야 온다. 다시 시험하려면 `false`로 apply해서 지운 뒤 `true`로 다시 apply한다(새 예산이라 처음부터 다시 평가한다).
+- 콘솔 Billing → 예산에서 임계값이 `초과됨`이면 메일은 이미 나갔다. 받은편지함에 없으면 Gmail 검색창에 `in:anywhere "AWS Budgets"`를 쳐서 스팸·프로모션까지 찾는다.
+- 매일 비용 메일은 예산 알림과 따로 4-9에서 만든다.
 
 ### 4-4. dev 유지 묶음 만들기 (할 일 3, 김진아)
 
@@ -800,6 +806,64 @@ try { Invoke-RestMethod "$url/api/members/me" } catch { $_.Exception.Response.St
 ```
 
 브라우저로 주소를 열어 점주 시드 계정으로 로그인되면 할 일 13의 배포 부분이 끝난다.
+
+### 4-9. 매일 아침 비용 메일 (김진아)
+
+매일 09:00(한국 시간)에 `alert_emails`의 세 사람에게 아래 메일이 간다. 주말에도 간다.
+
+```
+제목: [FreshLink 비용] 10/19 US$1.23 · 총 US$5.88
+어제(2026-10-19) 비용: US$1.23
+10월 누계(10/01~10/19): US$5.88 / 예산 US$160.00 (3.7%)
+총 비용(2026-10-01부터): US$5.88 / 지원금 US$360.00 (1.6%)
+어제 많이 쓴 서비스 (상위 5): ...
+```
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `global` (`modules/cost-report`) | Lambda `freshlink-cost-report`(Python 3.13, Cost Explorer 읽기와 아래 주제 보내기만), SNS 주제 `freshlink-cost-report`와 메일 구독 3개, EventBridge Scheduler 일정 `freshlink-cost-report`(`cron(0 9 * * ? *)`, `Asia/Seoul`)와 그 Role, 로그 그룹(14일) |
+
+- Cost Explorer의 하루는 UTC다. 09:00에 보내야 어제 하루(한국 시간 어제 09:00~오늘 09:00)가 끝나 있다. Cost Explorer는 최대 하루 늦게 채워져서 어제 값은 다음 날 메일에서 조금 늘 수 있다.
+- 금액은 크레딧·환불을 뺀 실제 사용 금액이다(예산과 같은 기준). 총 비용은 `monthly_budget_usd`의 첫 달 1일부터 센다.
+- 비용: Cost Explorer API 한 번에 0.01 USD, 하루 2번이라 한 달 0.6 USD쯤이다. Lambda·SNS·Scheduler는 무료 한도 안이다.
+- 받는 사람을 바꾸려면 `terraform.tfvars`의 `alert_emails`를 고치고 다시 apply한다(예산 알림도 같이 바뀐다).
+
+**1) AWS에 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+notepad global\terraform.tfvars
+#   alert_emails에 김진아·이태우·김경우 세 줄만 있는지 보고 저장한다
+
+terraform "-chdir=global" init "-backend-config=../backend.hcl"
+#   "Terraform has been successfully initialized!"가 나오면 성공 (archive 프로바이더를 새로 받는다)
+terraform "-chdir=global" apply
+#   "Plan: 11 to add, ..."를 보고 yes 입력. 받는 사람이 바뀌면 예산·이상 탐지 2개가 change로,
+#   시험 예산을 끄면(budget_test_alert = false) 1개가 destroy로 함께 나온다. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다
+#   "Apply complete!"가 나오면 성공
+```
+
+**2) 구독 확인 (세 사람 각자).** apply 직후 `AWS Notification - Subscription Confirmation` 메일(보낸 사람 `no-reply@sns.amazonaws.com`)이 온다. 본문의 **Confirm subscription** 링크를 한 번 누른다. 안 보이면 Gmail 검색창에 `in:anywhere from:sns.amazonaws.com`을 친다. 확인 링크는 3일 뒤 만료된다(만료되면 1)의 apply를 다시 한다).
+
+```powershell
+aws sns list-subscriptions-by-topic --topic-arn (aws sns list-topics --query "Topics[?ends_with(TopicArn, ':freshlink-cost-report')].TopicArn" --output text) --query "Subscriptions[].[Endpoint,SubscriptionArn]" --output table
+#   세 줄 모두 오른쪽이 arn:aws:sns:...이면 성공. PendingConfirmation이면 그 사람이 아직 링크를 안 눌렀다
+```
+
+비용 메일 아래쪽의 unsubscribe 링크를 누르면 그 사람만 구독이 풀린다. 다시 받으려면 1)의 apply를 다시 한다.
+
+**3) 지금 한 번 보내 보기.** 같은 창에서 친다.
+
+```powershell
+aws lambda invoke --function-name (terraform "-chdir=global" output -raw cost_report_function_name) "$env:TEMP\cost.json"
+#   "StatusCode": 200 이 나오면 성공. "FunctionError"가 같이 나오면 아래 줄 결과를 스레드에 붙여 넣는다
+Get-Content "$env:TEMP\cost.json"
+#   "subject": "[FreshLink 비용] ..." 이 보이고, 1분 안에 같은 제목 메일이 세 사람에게 오면 성공
+```
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

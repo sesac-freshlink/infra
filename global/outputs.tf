@@ -27,3 +27,8 @@ output "ci_ecr_push_role_arn" {
   description = "서비스 CI가 맡는 Role ARN (.github 레포 spring-build.yml의 aws-role-arn 기본값)"
   value       = aws_iam_role.ci_ecr_push.arn
 }
+
+output "cost_report_function_name" {
+  description = "매일 비용 메일 Lambda 이름 (README 4-9에서 지금 한 번 보내 볼 때 쓴다)"
+  value       = module.cost_report.function_name
+}
