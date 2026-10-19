@@ -7,6 +7,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    # 비용 메일 Lambda 코드를 zip으로 묶는다(modules/cost-report)
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
+    }
   }
 
   # bucket은 레포 루트 backend.hcl에서 받는다: terraform init -backend-config=../backend.hcl

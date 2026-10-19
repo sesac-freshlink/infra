@@ -1,5 +1,5 @@
 variable "alert_emails" {
-  description = "예산·비용 이상 알림 메일 (김진아, 이태우, 김경우, 문영훈). 실값은 terraform.tfvars에만 둔다"
+  description = "예산·비용 이상 알림과 매일 비용 메일을 받을 주소 (김진아, 이태우, 김경우). 실값은 terraform.tfvars에만 둔다"
   type        = list(string)
 }
 
@@ -15,6 +15,12 @@ variable "monthly_budget_usd" {
     condition     = sum(values(var.monthly_budget_usd)) <= 360
     error_message = "월 예산 합계가 360 USD를 넘는다."
   }
+}
+
+variable "total_budget_usd" {
+  description = "프로젝트 전체 예산(USD, 새싹 지원금). 매일 비용 메일에 총 비용 비율로 보인다"
+  type        = number
+  default     = 360
 }
 
 variable "anomaly_threshold_usd" {
