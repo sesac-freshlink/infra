@@ -296,7 +296,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1
 #   "완료: freshlink-dev-toss 에 테스트 키를 넣었다."가 나오면 성공
 ```
 
-**5) 팀원에게 줄 값.** 아래 두 값을 이태우·김경우에게 전달한다(비밀번호는 팀원이 직접 꺼낸다).
+**5) 팀원에게 줄 값 확인.** 팀원은 같은 값을 SSM 파라미터 `/freshlink/dev/ssm-access-instance-id`·`/freshlink/dev/db-address`에서 직접 읽는다(아래 "팀원 확인"). 따로 전달하지 않아도 된다. 아래 값과 같은지만 본다.
 
 ```powershell
 terraform "-chdir=envs/dev/persistent" output -raw ssm_access_instance_id; ""   # i-로 시작
@@ -327,14 +327,27 @@ aws ec2 start-instances --instance-ids (terraform "-chdir=envs/dev/persistent" o
 
 #### 팀원 확인 (할 일 3 완료 기준)
 
-이태우·김경우가 각자 PC에서 한다. 5-2를 마쳐 `freshlink-dev` 프로필이 있어야 한다. 준비 단계의 두 프로그램 설치도 같다. `<인스턴스 ID>`·`<DB 주소>`는 김진아가 5)에서 준 값이다.
+이태우·김경우가 각자 PC에서 한다. 5-2를 마쳐 `freshlink-dev` 프로필이 있어야 한다. 준비 단계의 두 프로그램 설치도 같다. 인스턴스 ID·DB 주소는 받아 적지 않는다. nano가 다시 만들어지면 ID가 바뀌므로, 스크립트가 SSM 파라미터 `/freshlink/dev/ssm-access-instance-id`·`/freshlink/dev/db-address`에서 지금 값을 읽는다.
 
-창 1 (포트 포워딩, 열어 둔다):
+창 1 (포트 포워딩, 열어 둔다). infra 레포를 받은 폴더에서 친다:
 
 ```powershell
-aws ssm start-session --profile freshlink-dev --target <인스턴스 ID> --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters "host=<DB 주소>,portNumber=3306,localPortNumber=3306"
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -AwsProfile freshlink-dev
 #   "Waiting for connections..."가 나오면 성공
 ```
+
+스크립트 없이 직접 치려면 지금 값을 먼저 읽는다:
+
+```powershell
+$id = aws ssm get-parameter --name /freshlink/dev/ssm-access-instance-id --query Parameter.Value --output text --profile freshlink-dev
+$db = aws ssm get-parameter --name /freshlink/dev/db-address --query Parameter.Value --output text --profile freshlink-dev
+aws ssm start-session --profile freshlink-dev --target $id --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters "host=$db,portNumber=3306,localPortNumber=3306"
+```
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| `start-session`이 `AccessDeniedException ... no identity-based policy allows the ssm:StartSession action` 또는 `TargetNotConnected` (예전에 받은 ID로 칠 때) | nano가 다시 만들어져 그 ID가 없어졌다(없는 인스턴스에는 `Environment=dev` 태그가 없어 거부된다). ID를 적어 두지 말고 위 스크립트나 `get-parameter`로 지금 ID를 읽는다 |
+| `get-parameter`가 `AccessDenied` | `--profile freshlink-dev`(스크립트는 `-AwsProfile freshlink-dev`)를 빠뜨렸다 |
 
 창 2 (DB 접속과 큐). 이태우는 `inventory`, 김경우는 `member`(같은 방법으로 `order`도)를 쓴다. 아래는 이태우 예시다.
 

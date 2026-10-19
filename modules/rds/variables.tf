@@ -1,3 +1,8 @@
+variable "env" {
+  description = "환경 이름 (dev 또는 prod). SSM 파라미터 경로 /freshlink/<env>/... 에 쓴다"
+  type        = string
+}
+
 variable "name_prefix" {
   description = "리소스 이름 앞부분 (예 freshlink-dev). RDS는 <name_prefix>-mysql, 비밀은 <name_prefix>-<서비스>-db"
   type        = string

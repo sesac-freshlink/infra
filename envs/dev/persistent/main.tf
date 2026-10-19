@@ -23,6 +23,7 @@ module "network" {
 module "rds" {
   source = "../../../modules/rds"
 
+  env                  = local.env
   name_prefix          = local.name_prefix
   vpc_id               = module.network.vpc_id
   db_subnet_ids        = module.network.db_subnet_ids

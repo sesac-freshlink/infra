@@ -201,6 +201,13 @@ data "aws_iam_policy_document" "dev_access" {
     resources = ["${local.arn_prefix}:ssm:${local.region}:${local.account_id}:session/$${aws:username}-*"]
   }
 
+  # 포트 포워딩 스크립트가 지금 인스턴스 ID·DB 주소를 읽는다(dev persistent가 쓴다).
+  statement {
+    sid       = "DevSsmParametersRead"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+    resources = ["${local.arn_prefix}:ssm:${local.region}:${local.account_id}:parameter/freshlink/dev/*"]
+  }
+
   statement {
     sid = "DevLogsRead"
     actions = [
