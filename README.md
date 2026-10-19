@@ -441,7 +441,25 @@ powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -LocalPor
 #   "Waiting for connections..."가 나오면 성공
 ```
 
-창 1:
+창 1, 먼저 표가 생겼는지 본다:
+
+```powershell
+cd C:\fresh-link\repos\infra
+$env:AWS_PROFILE = "freshlink-admin"
+$out = (terraform -chdir=envs\dev\persistent output -json | Out-String) | ConvertFrom-Json
+$m = (aws secretsmanager get-secret-value --secret-id $out.master_user_secret_arn.value --query SecretString --output text) | ConvertFrom-Json
+mysqlsh --sql --host=127.0.0.1 --port=3307 "--user=$($m.username)" "--password=$($m.password)" -e "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('member','inventory','orders') ORDER BY 1,2;"
+```
+
+| 결과 | 뜻 |
+| --- | --- |
+| 아무 행도 없음 | 아직 누구도 서비스를 dev DB에 붙여 띄우지 않았다. 시드는 기다린다 |
+| `member`에 `flyway_schema_history`·`store`·`member` | 김경우의 member V1이 돌았다 |
+| `inventory`에 `flyway_schema_history`·`product` | 이태우의 inventory V1이 돌았다 |
+
+`flyway_schema_history`는 Flyway가 실제로 돌았다는 표시다. 이 확인을 건너뛰어도 아래 `seed-db.ps1`이 같은 확인을 먼저 하고, 표가 없으면 멈춘다.
+
+창 1, 시드를 넣는다:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -LocalPort 3307
