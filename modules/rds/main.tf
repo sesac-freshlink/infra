@@ -186,3 +186,18 @@ resource "aws_instance" "ssm_access" {
     ignore_changes = [ami]
   }
 }
+
+# 팀원은 state를 못 읽는다. 인스턴스가 다시 만들어져도 지금 ID·DB 주소를 여기서 읽는다(scripts/db-port-forward.ps1).
+resource "aws_ssm_parameter" "ssm_access_instance_id" {
+  name        = "/freshlink/${var.env}/ssm-access-instance-id"
+  description = "SSM access instance ID for RDS port forwarding (--target)"
+  type        = "String"
+  value       = aws_instance.ssm_access.id
+}
+
+resource "aws_ssm_parameter" "db_address" {
+  name        = "/freshlink/${var.env}/db-address"
+  description = "RDS address for port forwarding (host)"
+  type        = "String"
+  value       = aws_db_instance.this.address
+}
