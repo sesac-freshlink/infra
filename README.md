@@ -695,8 +695,9 @@ kubectl -n freshlink get pods -o custom-columns="NAME:.metadata.name,IMAGE:.spec
 **7) 할 일 10 확인: dev에서 401·403.** 같은 창에서 친다.
 
 ```powershell
-$alb = kubectl -n freshlink get ingress gateway -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
-$alb                                  # ...elb.amazonaws.com 주소가 나오면 성공 (처음 몇 분은 접속이 안 될 수 있다)
+# ALB는 CloudFront에서 오는 요청만 받는다(4-10). 그래서 ALB 주소가 아니라 CloudFront 주소의 /api로 시험한다
+$base = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+$base                                 # https://xxxx.cloudfront.net 이 나오면 성공. 4-8의 3(api-origin)이 끝나 있어야 한다
 
 $pool   = terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id
 $client = terraform "-chdir=envs/dev/persistent" output -raw cognito_app_client_id
@@ -711,12 +712,13 @@ function Get-IdToken($email) {
 $owner = Get-IdToken "owner1@freshlink.test"
 $admin = Get-IdToken "admin@freshlink.test"
 
-curl.exe -s -o NUL -w '%{http_code}\n' "http://$alb/api/members/me"                                             # 401 (토큰 없음)
-curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer x.y.z" "http://$alb/api/members/me"            # 401 (가짜 토큰)
-curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $owner" "http://$alb/api/admin/stores"         # 403 (점주가 관리자 경로)
-curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $admin" "http://$alb/api/owner/inventory"      # 403 (관리자가 점주 경로)
-curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $owner" "http://$alb/api/owner/inventory"      # 401·403이 아니면 성공 (gateway 통과. 서비스에 기능이 아직 없으면 404)
-curl.exe -s -o NUL -w '%{http_code}\n' "http://$alb/actuator/health"                                            # 404 (ALB가 /api만 넘긴다)
+curl.exe -s -o NUL -w '%{http_code}\n' "$base/api/members/me"                                             # 401 (토큰 없음)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer x.y.z" "$base/api/members/me"            # 401 (가짜 토큰)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $owner" "$base/api/admin/stores"         # 403 (점주가 관리자 경로)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $admin" "$base/api/owner/inventory"      # 403 (관리자가 점주 경로)
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $owner" "$base/api/owner/inventory"      # 401·403이 아니면 성공 (gateway 통과. 서비스에 기능이 아직 없으면 404)
+curl.exe -s -o NUL -w '%{http_code}
+' "$base/actuator/health"                                           # 200이고 내용은 프론트 화면(index.html). /api가 아니라서 gateway로 가지 않는다
 ```
 
 위조 헤더(`X-User-Id` 등)가 서비스에 닿지 않는지는 gateway 테스트가 확인한다(4)의 gateway `ci`가 초록이면 통과).
@@ -750,7 +752,7 @@ aws ec2 stop-instances --instance-ids (terraform "-chdir=envs/dev/persistent" ou
 
 - ALB는 클러스터를 만들 때마다 주소가 바뀐다. 그래서 `/api/*` 오리진 주소는 Terraform이 아니라 스크립트가 맞추고, Terraform은 그 칸을 무시한다(`ignore_changes`). 클러스터가 없을 때 `/api/*`는 버킷 주소를 가리켜 403이 난다.
 - 비용: CloudFront·S3 요청 비용뿐이다(시간당 과금 없음). 이 규모면 한 달 1 USD 아래다.
-- 아직 ALB는 인터넷 전체에서 80번으로 열려 있다. CloudFront 접두사 목록으로만 받게 하는 것은 따로 한다.
+- ALB는 CloudFront 오리진용 접두사 목록에서 오는 요청만 받는다(4-10). 인터넷에서 ALB 주소로 바로 오면 막힌다.
 
 **1) AWS에 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다. 클러스터는 꺼져 있어도 된다.
 
@@ -864,6 +866,40 @@ aws lambda invoke --function-name (terraform "-chdir=global" output -raw cost_re
 Get-Content "$env:TEMP\cost.json"
 #   "subject": "[FreshLink 비용] ..." 이 보이고, 1분 안에 같은 제목 메일이 세 사람에게 오면 성공
 ```
+
+### 4-10. ALB를 CloudFront에서 오는 요청만 받게 막기 (할 일 13, 김진아)
+
+gateway ALB는 원래 인터넷 전체(`0.0.0.0/0`)에서 80번을 받는다. 그러면 누구나 CloudFront를 거치지 않고 `http://k8s-freshlin-gateway-...elb.amazonaws.com/api/...`로 바로 들어올 수 있다. CloudFront 쪽에 둔 규칙(HTTPS, 캐시 정책, 나중에 붙일 WAF)을 건너뛰는 뒷문이다.
+
+막는 방법은 gitops 한 줄이다. gateway Ingress에 `alb.ingress.kubernetes.io/security-group-prefix-lists`를 붙이면 AWS Load Balancer Controller가 ALB 보안 그룹의 들어오는 규칙을 `0.0.0.0/0` 대신 AWS가 관리하는 **CloudFront 오리진용 접두사 목록**(`com.amazonaws.global.cloudfront.origin-facing`, CloudFront 서버 IP 묶음)으로 바꾼다. 값은 gitops `envs/<환경>/gateway/values.yaml`의 `ingress.allowedPrefixLists`다. 계정 값이 아니라 리전 공통 ID라서 공개 레포에 둬도 된다. Terraform은 바꿀 것이 없다.
+
+- 바뀌는 것: ALB 주소로 바로 부르면 연결이 안 된다(시간 초과). 팀원도 dev 백엔드는 CloudFront 주소의 `/api/...`로 부른다.
+- 바뀌지 않는 것: CloudFront `/api/*` → ALB → gateway 흐름, 4-8의 `api-origin`(ALB 주소는 그대로 쓴다), 클러스터 안 서비스끼리 부르기, `kubectl port-forward`.
+
+**1) 접두사 목록 ID 확인.** `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+$env:AWS_PROFILE = "freshlink-admin"
+aws ec2 describe-managed-prefix-lists --region ap-northeast-2 --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing --query "PrefixLists[0].PrefixListId" --output text
+#   pl-로 시작하는 값이 gitops envs/dev/gateway/values.yaml의 allowedPrefixLists와 같으면 성공
+```
+
+**2) gitops PR 합치기.** 합치면 ArgoCD가 gateway Ingress를 바꾸고, Load Balancer Controller가 ALB 보안 그룹 규칙을 1~2분 안에 바꾼다.
+
+**3) 확인.** dev 클러스터가 켜져 있을 때 친다.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+$alb  = kubectl -n freshlink get ingress gateway -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+$base = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+
+curl.exe -s -o NUL -m 10 -w '%{http_code}\n' "http://$alb/api/members/me"     # 000 (10초 뒤 시간 초과) = 막힘. 401이 나오면 아직 안 바뀐 것이다
+curl.exe -s -o NUL -w '%{http_code}\n' "$base/api/members/me"                 # 401 = CloudFront를 거치면 통과
+kubectl -n freshlink describe ingress gateway | Select-String -Pattern "Warning|Error"
+#   아무것도 안 나오면 성공. 경고가 있으면 그 줄을 스레드에 붙여 넣는다
+```
+
+- 되돌리기: gitops에서 `allowedPrefixLists`를 지우는 PR을 합치면 다시 `0.0.0.0/0`으로 열린다.
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
