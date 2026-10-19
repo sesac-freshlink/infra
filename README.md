@@ -784,7 +784,7 @@ try { Invoke-RestMethod "$url/api/members/me" } catch { $_.Exception.Response.St
 | --- | --- |
 | SQS 보내기·받기·지우기·속성 조회·비우기·DLQ 재처리 | 이름이 `dev-`로 시작하는 큐 |
 | Secrets Manager 값 읽기 | 이름이 `freshlink-dev-`로 시작하는 비밀 |
-| Cognito User Pool·사용자·그룹 조회 | 태그 `Environment=dev`인 User Pool |
+| Cognito User Pool·사용자·그룹 조회, 사용자 만들기·비밀번호·속성·그룹 넣기·지우기 (PC에서 member 점주 등록 시험용) | 태그 `Environment=dev`인 User Pool |
 | SSM 포트 포워딩 세션 시작·종료 | 태그 `Environment=dev`인 인스턴스. 셸 세션은 안 된다 |
 | CloudWatch Logs 읽기·Logs Insights | 이름에 `freshlink-dev-`가 들어간 로그 그룹 |
 | 본인 비밀번호·액세스 키·MFA 기기 관리 | 본인 사용자만 |

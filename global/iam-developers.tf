@@ -149,6 +149,26 @@ data "aws_iam_policy_document" "dev_access" {
     }
   }
 
+  # member-service를 PC에서 dev에 붙여 시험할 때(점주 등록 AD-01) 쓰는 사용자 관리 권한.
+  # 클러스터의 member IRSA 정책(freshlink-dev-member-cognito)과 같은 동작이고, 태그 Environment=dev인 User Pool만.
+  # (정책 description은 바꾸면 정책이 다시 만들어지므로 그대로 둔다)
+  statement {
+    sid = "DevCognitoUserAdmin"
+    actions = [
+      "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminUpdateUserAttributes",
+      "cognito-idp:AdminAddUserToGroup",
+      "cognito-idp:AdminDeleteUser",
+    ]
+    resources = ["${local.arn_prefix}:cognito-idp:${local.region}:${local.account_id}:userpool/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Environment"
+      values   = ["dev"]
+    }
+  }
+
   # SSM 포트 포워딩(RDS 접속용 t4g.nano). 셸 세션 문서는 주지 않는다.
   statement {
     sid       = "DevSsmStartSessionOnDevInstances"
