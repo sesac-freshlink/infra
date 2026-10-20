@@ -1,15 +1,19 @@
 # dev 클러스터 켜고 끄기 (aws-리소스-계획.md 6-5). Terraform으로 envs/dev/cluster를 만들고 지운다.
 # RDS·SSM 접속용 인스턴스·노드 수는 EventBridge Scheduler(envs/dev/persistent)가 맡는다.
 # 예약 작업은 UTC다. 한국 시각 - 9시간. 몇 분 늦게 돌 수 있다.
+# GitHub는 사람이 몰리는 정각(특히 UTC 00:00)에 예약 실행을 늦추거나 아예 건너뛴다(2026-10-20 화 09:00 NAT 생성이 안 돎).
+# 그래서 정각을 피하고, 꼭 돌아야 하는 NAT 생성·클러스터 삭제는 뒤에 한 번 더 돈다. 두 번 돌아도 바뀌는 것이 없다.
 name: dev-cluster
 
 on:
   schedule:
     - cron: "40 23 * * 0"  # 월 08:40 클러스터 생성 (UTC 일요일 23:40)
-    - cron: "0 0 * * 2-5"  # 화~금 09:00 NAT 생성
-    - cron: "10 12 * * 1-4" # 월~목 21:10 NAT 삭제
-    - cron: "0 12 * * 5"   # 금 21:00 클러스터 삭제
-    - cron: "0 14 * * *"   # 매일 23:00 NAT가 남아 있으면 삭제
+    - cron: "50 23 * * 1-4" # 화·수·목·금 08:50 NAT 생성 (UTC 전날 23:50)
+    - cron: "25 0 * * 1-5"  # 월·화·수·목·금 09:25 NAT 생성 한 번 더 (이미 있으면 그대로)
+    - cron: "10 12 * * 1-4" # 월·화·수·목 21:10 NAT 삭제
+    - cron: "5 12 * * 5"    # 금 21:05 클러스터 삭제
+    - cron: "35 13 * * 5"   # 금 22:35 클러스터 삭제 한 번 더 (이미 없으면 그대로)
+    - cron: "5 14 * * *"    # 매일 23:05 NAT가 남아 있으면 삭제
   workflow_dispatch:
     inputs:
       action:
@@ -51,10 +55,12 @@ jobs:
         run: |
           case "${SCHEDULE}" in
             "40 23 * * 0")  action=create ;;
-            "0 0 * * 2-5")  action=nat-on ;;
+            "50 23 * * 1-4") action=nat-on ;;
+            "25 0 * * 1-5")  action=nat-on ;;
             "10 12 * * 1-4") action=nat-off ;;
-            "0 12 * * 5")   action=destroy ;;
-            "0 14 * * *")   action=nat-off ;;
+            "5 12 * * 5")    action=destroy ;;
+            "35 13 * * 5")   action=destroy ;;
+            "5 14 * * *")    action=nat-off ;;
             *)              action="${INPUT}" ;;
           esac
           [ -n "${action}" ] || { echo "할 일을 정하지 못했다"; exit 1; }
