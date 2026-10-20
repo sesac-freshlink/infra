@@ -63,16 +63,18 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 
 | 시각 | 작업 | 도구 |
 | --- | --- | --- |
-| 월 08:40 | 클러스터 묶음 생성(노드 2대 포함) | GitHub Actions |
+| 월 08:40 | 클러스터 묶음 생성(노드 2대 포함) | EventBridge Scheduler → GitHub Actions |
 | 월~금 09:00 | RDS·nano 시작 | EventBridge Scheduler |
-| 화·수·목·금 08:50 (+ 평일 09:25 한 번 더) | NAT 생성 | GitHub Actions |
+| 화·수·목·금 08:50 | NAT 생성 | EventBridge Scheduler → GitHub Actions |
 | 화~금 09:10 | 노드 그룹 desired 2 | EventBridge Scheduler |
 | 월~목 21:00 | 노드 그룹 desired 0 (+ 월~금 RDS·nano 중지) | EventBridge Scheduler |
-| 월~목 21:10 | NAT 삭제 | GitHub Actions |
-| 금 21:05 (+ 22:35 한 번 더) | 클러스터 묶음 삭제 | GitHub Actions |
-| 매일 23:00 / 23:05 | 안전 끄기: RDS·nano 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / GitHub Actions |
+| 월~목 21:10 | NAT 삭제 | EventBridge Scheduler → GitHub Actions |
+| 금 21:05 | 클러스터 묶음 삭제 | EventBridge Scheduler → GitHub Actions |
+| 매일 23:00 / 23:05 | 안전 끄기: RDS·nano 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / EventBridge Scheduler → GitHub Actions |
 
-GitHub Actions 예약은 정각을 피했다. GitHub가 붐비는 정각 예약을 늦추거나 건너뛰기 때문이다(2026-10-20 화 09:00 NAT 생성이 안 돎). NAT 생성과 클러스터 삭제는 한 번 더 돌고, 두 번째는 이미 끝났으면 바뀌는 것이 없다. GitHub는 예약을 몇 시간 늦게 돌리기도 해서(2026-10-19 21:10 NAT 삭제가 다음 날 03:41에 돎), 예약 실행은 한국 시각이 맞을 때만 한다: NAT 생성은 평일 08~20시, NAT 삭제는 21시~다음 날 08시, 클러스터 생성은 월 08~20시, 삭제는 금 21시부터 일요일까지. 그 밖에 늦게 온 예약은 건너뛰고 요약에 남긴다. 수동 버튼은 언제든 돈다. 그래도 09:30에 dev `/api`가 503이면 수동 버튼 `nat-on`을 돌린다.
+"EventBridge Scheduler → GitHub Actions"는 EventBridge가 정해진 시각에 Lambda `freshlink-dev-workflow-dispatch`를 부르고, 그 Lambda가 dev-cluster 워크플로의 **Run workflow**(workflow_dispatch)를 대신 누른다는 뜻이다. Terraform은 그대로 GitHub Actions에서 돈다(4-11).
+
+GitHub 예약(schedule)만 쓰지 않는 이유: 2026-10-20 화 09:00 NAT 생성 예약이 아예 돌지 않았고, 전날 21:10·23:00 NAT 삭제 예약은 03:41·04:34에야 돌았다. GitHub는 붐빌 때 예약 실행을 몇 시간 늦추거나 건너뛴다. 그래서 시각은 EventBridge가 지키고, 워크플로 안의 GitHub 예약(08:50·09:25 NAT 생성, 21:05·22:35 삭제 등, 정각은 피함)은 예비로만 남긴다. 늦게 온 GitHub 예약은 한국 시각을 보고 맞지 않으면 건너뛴다: NAT 생성은 평일 8시부터 20시까지, NAT 삭제는 21시부터 다음 날 8시까지, 클러스터 생성은 월요일 8시부터 20시까지, 삭제는 금요일 21시부터 일요일까지. 같은 일이 두 번 돌아도 바뀌는 것이 없다(한 줄로 서서 돌고, 이미 된 상태면 변경 없음). 자세한 경위는 [트러블슈팅 기록](docs/troubleshooting/2026-10-20-nat-예약-빠짐-노드-안-붙음.md).
 
 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 
@@ -606,6 +608,7 @@ terraform "-chdir=envs/dev/cluster" apply "-var=nat_enabled=false"
 | 노드 그룹 `CREATE_FAILED` `NodeCreationFailure` | NAT 경로가 없다. 밤에 `nat_enabled=false`로 만들었는지 본다 |
 | 워크플로 `Could not assume role` | 4)의 비밀 이름·값을 다시 넣는다. `main`이 아닌 브랜치에서 돌리면 거부된다. 레포 OIDC sub 형식이 바뀌었으면 `modules/cluster-actions` `github_sub_prefixes`를 맞춘다 |
 | 워크플로 요약 표에 남은 것이 있다 | 표의 ID를 스레드에 붙여 넣는다. ALB가 남았으면 다시 `destroy`를 돌린다 |
+| dev `/api` 전체 503, `kubectl get nodes`가 비어 있는데 노드 그룹 desiredSize는 2 | NAT가 없을 때 노드가 떠서 EKS API·ECR에 닿지 못해 클러스터에 붙지 못했다. NAT를 켠 뒤(`nat-on`) `aws ec2 describe-instances --filters "Name=tag:eks:nodegroup-name,Values=freshlink-dev-nodes" "Name=instance-state-name,Values=running" --query "Reservations[].Instances[].InstanceId" --output text`로 나온 인스턴스를 `aws ec2 terminate-instances --instance-ids <ID들>`로 지우면 노드 그룹이 새로 띄워 3~5분 안에 붙는다 ([기록](docs/troubleshooting/2026-10-20-nat-예약-빠짐-노드-안-붙음.md)) |
 | 워크플로 `Error acquiring the state lock` (`PreconditionFailed`) | 앞선 작업이 terraform 도중 취소돼 잠금 파일이 남았다. 로그 `Lock Info`의 `ID`를 복사해 action `unlock`, `lock_id`에 붙여 넣고 돌린 뒤 원래 작업을 다시 돌린다 ([기록](docs/troubleshooting/2026-10-17-dev-cluster-state-잠금-남음.md)) |
 
 ### 4-7. CI·dev 배포·gateway 확인 (할 일 8·9·10, 김진아)
@@ -902,6 +905,71 @@ kubectl -n freshlink describe ingress gateway | Select-String -Pattern "Warning|
 ```
 
 - 되돌리기: gitops에서 `allowedPrefixLists`를 지우는 PR을 합치면 다시 `0.0.0.0/0`으로 열린다.
+
+### 4-11. 켜고 끄기 시각을 EventBridge가 지키게 하기 (김진아)
+
+dev-cluster 워크플로를 EventBridge Scheduler가 정해진 시각에 실행하게 한다. GitHub 예약이 늦거나 빠져도 NAT·클러스터가 제시간에 켜지고 꺼진다(2장 표).
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `envs/dev/persistent` (`modules/workflow-dispatch`) | Lambda `freshlink-dev-workflow-dispatch`(Python 3.13, 아래 비밀 읽기와 GitHub API 호출만), 비밀 `freshlink-dev-workflow-dispatch-token`(값 없음, 2)에서 넣는다), 일정 그룹 `freshlink-dev-workflow-dispatch`와 일정 5개(`Asia/Seoul`), Role 2개, 로그 그룹(14일) |
+
+- 토큰: GitHub fine-grained 토큰. `sesac-freshlink/infra` 저장소 하나에 **Actions 읽기·쓰기**만 준다. 코드를 읽거나 바꿀 수 없다. 값은 Terraform에 넣지 않는다(state에 남지 않게).
+- 비용: 비밀 1개 월 0.4 USD. Lambda·Scheduler는 무료 한도 안이다.
+- 토큰이 만료되면 Lambda 로그에 `HTTP 401`이 남고 GitHub 예약(예비)만 돈다. 1)~3)의 토큰 만들기와 넣기만 다시 한다.
+
+**1) AWS에 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 13 to add, 0 to change, 0 to destroy."를 보고 yes 입력. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다
+#   "Apply complete!"가 나오면 성공
+```
+
+**2) GitHub 토큰 만들기.** 브라우저에서 한다.
+
+1. https://github.com/settings/personal-access-tokens/new 를 연다.
+2. **Token name**: `freshlink-dev-workflow-dispatch`
+3. **Resource owner**: `sesac-freshlink`
+4. **Expiration**: Custom → MVP가 끝나는 날 뒤로 고른다(예 2026-12-31).
+5. **Repository access**: **Only select repositories** → `infra` 하나만 고른다.
+6. **Permissions** → **Repository permissions** → **Actions**: `Read and write`. 다른 권한은 건드리지 않는다(Metadata 읽기는 저절로 붙는다).
+7. **Generate token**을 누르고, 나온 `github_pat_...` 값을 복사한다. 이 창을 닫으면 다시 볼 수 없다.
+8. 조직이 토큰 승인을 요구하면 상태가 Pending이 된다. https://github.com/organizations/sesac-freshlink/settings/personal-access-token-requests 에서 **Approve**를 누른다.
+
+**3) 토큰 넣기.** 1)의 창에서 친다. 붙여 넣은 값은 화면에 보이지 않는다.
+
+```powershell
+$s = Read-Host "github_pat_ 토큰 붙여 넣기" -AsSecureString
+$t = [System.Net.NetworkCredential]::new("", $s).Password
+aws secretsmanager put-secret-value --secret-id (terraform "-chdir=envs/dev/persistent" output -raw workflow_dispatch_token_secret) --secret-string $t
+Remove-Variable s, t
+#   "VersionId"가 보이면 성공
+```
+
+**4) 시험.** 클러스터를 바꾸지 않는 `unlock`(잠금이 없으면 "잠금 없음"만 적고 끝난다)으로 한 번 눌러 본다.
+
+```powershell
+Set-Content "$env:TEMP\dispatch.json" '{"action":"unlock"}' -Encoding ascii
+aws lambda invoke --function-name (terraform "-chdir=envs/dev/persistent" output -raw workflow_dispatch_function) --payload "fileb://$env:TEMP\dispatch.json" "$env:TEMP\dispatch-out.json"
+Get-Content "$env:TEMP\dispatch-out.json"
+#   {"action": "unlock", "status": 204} 가 나오면 성공. errorMessage에 HTTP 401이면 토큰 값, 403·404면 토큰 권한(2)의 5·6·8)을 다시 본다
+gh run list --repo sesac-freshlink/infra --workflow dev-cluster.yml --limit 1
+#   맨 위 줄 EVENT가 workflow_dispatch이고 ✓면 성공
+```
+
+**5) 일정 확인.**
+
+```powershell
+aws scheduler list-schedules --group-name freshlink-dev-workflow-dispatch --query "Schedules[].{name:Name,state:State}" --output table
+#   create, nat-on, nat-off, destroy, nat-off-late 5개가 ENABLED면 성공
+```
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

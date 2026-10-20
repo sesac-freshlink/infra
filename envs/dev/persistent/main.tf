@@ -46,6 +46,23 @@ module "scheduler" {
   enabled                 = var.scheduler_enabled
 }
 
+# 켜고 끄기 워크플로(dev-cluster.yml)를 정해진 시각에 실행한다. GitHub 예약은 몇 시간 늦거나 빠져서
+# 시각은 여기서 지킨다(2026-10-20). 워크플로 안의 GitHub 예약은 예비로 남고, 늦게 오면 시각을 보고 건너뛴다.
+# 두 번 돌아도 바뀌는 것이 없다(concurrency로 한 줄로 서고, 이미 된 상태면 변경 없음).
+module "cluster_dispatch" {
+  source = "../../../modules/workflow-dispatch"
+
+  name_prefix = local.name_prefix
+  enabled     = var.scheduler_enabled
+  schedules = {
+    create       = { cron = "cron(40 8 ? * MON *)", action = "create" }       # 월 08:40 클러스터 생성 (노드 2대·NAT 포함)
+    nat-on       = { cron = "cron(50 8 ? * TUE-FRI *)", action = "nat-on" }   # 화·수·목·금 08:50 NAT 생성 (노드 09:10보다 먼저)
+    nat-off      = { cron = "cron(10 21 ? * MON-THU *)", action = "nat-off" } # 월·화·수·목 21:10 NAT 삭제
+    destroy      = { cron = "cron(5 21 ? * FRI *)", action = "destroy" }      # 금 21:05 클러스터 삭제
+    nat-off-late = { cron = "cron(5 23 * * ? *)", action = "nat-off" }        # 매일 23:05 NAT가 남아 있으면 삭제
+  }
+}
+
 module "cluster_actions" {
   source = "../../../modules/cluster-actions"
 
