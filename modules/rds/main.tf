@@ -182,8 +182,10 @@ resource "aws_instance" "ssm_access" {
   tags = { Name = "${var.name_prefix}-ssm-access" }
 
   lifecycle {
-    # 새 AMI가 나와도 인스턴스를 다시 만들지 않는다(인스턴스 ID가 바뀌면 팀원 명령도 바뀐다)
-    ignore_changes = [ami]
+    # 새 AMI가 나와도 인스턴스를 다시 만들지 않는다(인스턴스 ID가 바뀌면 팀원 명령도 바뀐다).
+    # 꺼진 인스턴스는 공인 IP를 반납해서 associate_public_ip_address가 false로 읽힌다(켜면 다시 받는다).
+    # 그대로 두면 꺼 둔 채 apply할 때마다 인스턴스를 다시 만들려 한다(2026-10-20 prod).
+    ignore_changes = [ami, associate_public_ip_address]
   }
 }
 
