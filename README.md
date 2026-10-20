@@ -309,11 +309,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\db-init.ps1
 
 끝나면 창 2에서 `Ctrl+C`로 포트 포워딩을 끈다. 여러 번 돌려도 된다(있으면 건너뛰고 비밀번호만 비밀 값으로 다시 맞춘다).
 
-**4) 토스 테스트 키 넣기.** 토스페이먼츠 개발자센터의 테스트 키 두 개(`test_ck_...`, `test_sk_...`)를 물으면 붙여 넣는다. 키가 아직 없으면 나중에 한다.
+**4) 토스 테스트 키 넣기.** 토스페이먼츠 개발자센터의 테스트 키 두 개(결제위젯 `test_gck_...`·`test_gsk_...`)를 물으면 붙여 넣는다. 시크릿 키는 입력해도 화면에 보이지 않는다. 클라이언트 키는 frontend 레포 Variable `DEV_TOSS_CLIENT_KEY`에도 같이 들어간다(`gh auth login` 필요). 키가 아직 없으면 나중에 한다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1
-#   "완료: freshlink-dev-toss 에 테스트 키를 넣었다."가 나오면 성공
+#   "완료: freshlink-dev-toss 에 테스트 키를 넣었다."와 "완료: sesac-freshlink/frontend Variable DEV_TOSS_CLIENT_KEY 을 넣었다."가 나오면 성공
 ```
 
 **5) 팀원에게 줄 값 확인.** 팀원은 같은 값을 SSM 파라미터 `/freshlink/dev/ssm-access-instance-id`·`/freshlink/dev/db-address`에서 직접 읽는다(아래 "팀원 확인"). 따로 전달하지 않아도 된다. 아래 값과 같은지만 본다.
