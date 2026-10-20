@@ -64,7 +64,7 @@ variable "eks_node_group_name" {
 }
 
 variable "nodes_up_cron" {
-  description = "노드 2대. 기본 화~금 09:10 (NAT가 09:00에 생긴 뒤. 월요일은 클러스터 생성이 노드 2대로 만든다)"
+  description = "노드 2대. 기본 화~금 09:10 (NAT가 08:50에 생긴 뒤, modules/workflow-dispatch. NAT 없이 뜬 노드는 붙지 못한다. 월요일은 클러스터 생성이 노드 2대로 만든다)"
   type        = string
   default     = "cron(10 9 ? * TUE-FRI *)"
 }
