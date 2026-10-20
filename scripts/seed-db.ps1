@@ -14,6 +14,8 @@ param(
     [string]$Part = "all"
 )
 $ErrorActionPreference = "Stop"
+# mysqlsh는 UTF-8로 출력한다. PowerShell 5.1 기본(CP949)으로 읽으면 결과 표의 한글이 깨져 보인다
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 if (-not (Get-Command mysqlsh -ErrorAction SilentlyContinue)) {
     throw "mysqlsh가 없다. 'winget install --id Oracle.MySQLShell -e --source winget' 뒤 PowerShell 창을 새로 연다."
@@ -108,10 +110,11 @@ foreach ($p in $parts) {
     $sql = Get-Content -Raw -Encoding UTF8 (Join-Path $seedDir $files[$p].sql)
     if ($p -eq "member") {
         $raw = Get-SecretString $out.seed_accounts_secret_name.value
-        $accounts = @($raw | ConvertFrom-Json)
+        # PowerShell 5.1의 ConvertFrom-Json은 JSON 배열을 한 덩어리로 내보낸다. ForEach-Object로 풀어야 계정 하나씩 고를 수 있다
+        $accounts = @($raw | ConvertFrom-Json | ForEach-Object { $_ })
         foreach ($n in 1..3) {
             $a = $accounts | Where-Object { $_.storeId -eq "$n" } | Select-Object -First 1
-            if (-not $a -or $a.sub -notmatch "^[0-9a-f-]{36}$") {
+            if (-not $a -or -not ($a.sub -is [string]) -or $a.sub -notmatch "^[0-9a-f-]{36}$") {
                 throw "점주 $n (storeId $n) 계정의 sub가 비밀에 없다. seed-cognito.ps1을 먼저 돌린다."
             }
             $sql = $sql.Replace("{{OWNER${n}_SUB}}", $a.sub).Replace("{{OWNER${n}_EMAIL}}", $a.email)
