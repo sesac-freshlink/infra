@@ -482,7 +482,7 @@ mysqlsh --sql --host=127.0.0.1 --port=3307 "--user=$($m.username)" "--password=$
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -LocalPort 3307
-#   점포 1~3이 ACTIVE·owner1~3 이메일과 함께 나오고, product_count 30이 나오면 성공
+#   점포 1~3이 S1~S3·ACTIVE·owner1~3 이메일과 함께 나오고, product_count 30이 나오면 성공
 ```
 
 - 표가 아직 없거나 칼럼이 시드와 다르면 `멈춤:`과 이유 목록을 보여 주고 **아무것도 넣지 않는다.** 그 목록을 스레드에 붙여 넣는다.
