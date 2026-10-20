@@ -19,7 +19,8 @@ locals {
   queue_commands = local.persistent.queue_arns["shared"][0]
   queue_results  = local.persistent.queue_arns["shared"][2]
 
-  app_namespace = "freshlink" # gitops 앱 네임스페이스
+  app_namespace           = "freshlink"     # gitops 앱 네임스페이스
+  observability_namespace = "observability" # gitops 관측성 네임스페이스
 }
 
 data "terraform_remote_state" "persistent" {
@@ -90,7 +91,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_eks" {
 }
 
 # ---------------------------------------------------------------------------
-# IRSA Role: 서비스 4개(gateway는 AWS를 부르지 않아 없음) + 클러스터 부품 3개
+# IRSA Role: 서비스 4개(gateway는 AWS를 부르지 않아 없음) + 클러스터 부품 3개 + Loki
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "inventory_service" {
   statement {
@@ -139,6 +140,20 @@ data "aws_iam_policy_document" "external_secrets" {
   }
 }
 
+# Loki(gitops platform/observability): persistent 묶음의 로그 버킷만 읽고 쓴다.
+data "aws_iam_policy_document" "loki" {
+  statement {
+    sid       = "ListLogBucket"
+    actions   = ["s3:ListBucket"]
+    resources = [local.persistent.loki_bucket_arn]
+  }
+  statement {
+    sid       = "ReadWriteLogObjects"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    resources = ["${local.persistent.loki_bucket_arn}/*"]
+  }
+}
+
 module "irsa" {
   source = "../../../modules/irsa"
 
@@ -182,6 +197,11 @@ module "irsa" {
       namespace       = "external-secrets"
       service_account = "external-secrets"
       policy_json     = data.aws_iam_policy_document.external_secrets.json
+    }
+    loki = {
+      namespace       = local.observability_namespace
+      service_account = "loki" # gitops platform/observability/values/loki.yaml serviceAccount.name
+      policy_json     = data.aws_iam_policy_document.loki.json
     }
   }
 }

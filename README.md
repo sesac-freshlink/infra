@@ -117,10 +117,11 @@ infra/
 
 ## 할 일: 관측성 (I-03)
 
-- [ ] `modules/observability`: Loki 로그 버킷 `freshlink-<env>-loki-logs-<계정ID 끝 4자리>`, 수명 주기 14일, 퍼블릭 차단 (`envs/<env>/persistent`)
-- [ ] `modules/irsa`: `freshlink-<env>-loki-irsa` (위 버킷 읽기·쓰기만), EBS CSI 드라이버 Role
+- [x] `modules/observability`: Loki 로그 버킷 `freshlink-<env>-loki-logs-<계정ID 끝 4자리>`, 수명 주기 15일(Loki 보관 14일 + 하루), 퍼블릭 차단 (`envs/{dev,prod}/persistent`, 할 일 16)
+- [x] `envs/<env>/cluster` IRSA: `freshlink-<env>-loki-irsa` (위 버킷 읽기·쓰기만, ServiceAccount `observability/loki`) (dev·prod, 할 일 16)
 - [x] `envs/<env>/cluster`: EBS CSI 드라이버 애드온·IRSA Role, 기본 `gp3` StorageClass (할 일 7)
-- [ ] 만든 버킷 이름·Role ARN을 `gitops/platform/observability/loki.yaml`에 반영
+- [x] 버킷 이름·Role ARN은 root Application 값 `cluster.observability.loki`로 gitops에 넘긴다(gitops는 공개 레포라 적지 않는다) (할 일 16)
+- [ ] prod에서 관측성 켜기: gitops `argocd/apps/values.yaml` `observability.enabled.prod: true` (dev 확인 뒤)
 
 ## 할 일: 켜고 끄기 (I-09)
 
@@ -1183,6 +1184,53 @@ kubectl -n freshlink port-forward svc/logistics-simulator 8085:8080
 **6) 시나리오 (할 일 15 완료 기준).** 5)의 prod 주소에서 dev와 같은 흐름을 따라간다: 점주 owner1 로그인(비밀번호는 4-12의 5) 비밀) → 재고 화면, 새 메일로 손님 가입 → 상품 목록 → 주문·결제.
 
 **7) 끄기.** 4-12의 8).
+
+### 4-14. 관측성 붙이기 (할 일 16, 김진아)
+
+이 PR과 gitops PR(관측성 앱)로 아래가 생긴다. Prometheus·Grafana·Loki·Alloy·Zipkin 자체는 gitops가 ArgoCD로 설치한다(`gitops/platform/observability/README.md`).
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `envs/{dev,prod}/persistent` | S3 `freshlink-<env>-loki-logs-<계정 끝 4자리>` (Loki 로그, 15일 뒤 지움, 퍼블릭 차단, 암호화). 클러스터 삭제와 상관없이 남는다. dev만 `force_destroy` |
+| `envs/{dev,prod}/cluster` | IRSA Role `freshlink-<env>-loki-irsa` (위 버킷 읽기·쓰기만). root Application에 버킷 이름·Role ARN을 넘긴다 |
+| `.github/workflows/dev-cluster.yml` | 삭제 전에 Prometheus를 먼저 내려 볼륨(PVC)이 지워지게 한다 |
+
+**순서가 중요하다.** 환경마다 persistent를 먼저 적용해야 cluster가 새 출력(`loki_bucket`)을 읽는다. prod persistent를 다시 적용하지 않고 prod 클러스터를 만들면 cluster 단계가 `loki_bucket_arn`이 없다며 실패한다.
+
+**1) persistent 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다. 클러스터는 꺼져 있어도 된다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 5 to add, 0 to change, 0 to destroy."를 보고 yes 입력 (버킷과 그 설정 4개. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
+terraform "-chdir=envs/prod/persistent" apply
+#   prod 묶음(4-12)을 이미 만들었으면 같은 "Plan: 5 to add"를 보고 yes 입력
+terraform "-chdir=envs/dev/persistent" output -raw loki_bucket
+#   freshlink-dev-loki-logs-xxxx 가 나오면 성공
+```
+
+**2) cluster 적용.** 클러스터가 켜져 있으면 지금, 꺼져 있으면 다음 생성 때 자동으로 들어간다.
+
+1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml → **Run workflow** → env `dev`, action `create` → **Run workflow**.
+2. 초록 체크로 끝나면 성공(이미 있는 클러스터에는 Role 하나와 root 값만 바뀐다). prod는 4-12대로 켤 때 같이 들어간다.
+
+**3) 확인 (dev).** gitops 관측성 PR이 합쳐진 뒤 5분쯤 기다리고 친다.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+kubectl -n argocd get applications
+#   observability-base, kube-prometheus-stack, loki, alloy 네 줄이 Synced / Healthy면 성공 (Progressing이면 2분 뒤 다시)
+kubectl -n observability get pods
+#   Running 파드 10개쯤(노드마다 alloy·node-exporter 하나씩)이 나오면 성공. Pending이 있으면 스레드에 붙여 넣는다
+aws s3 ls "s3://$(terraform "-chdir=envs/dev/persistent" output -raw loki_bucket)/" --recursive | Select-Object -First 3
+#   10분쯤 뒤 파일이 보이면 성공 (Loki가 로그 조각을 S3에 올렸다)
+```
+
+Grafana·Zipkin 보는 방법과 할 일 16 완료 확인 순서는 `gitops/platform/observability/README.md` 5장에 있다. prod는 dev 확인 뒤 gitops `observability.enabled.prod`를 true로 바꾸면 같은 앱이 올라간다.
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

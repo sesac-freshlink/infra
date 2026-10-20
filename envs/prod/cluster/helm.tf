@@ -114,6 +114,13 @@ resource "helm_release" "argocd_root" {
         COGNITO_CLIENT_ID    = local.persistent.cognito_app_client_id # gateway 토큰 aud 확인
         COGNITO_USER_POOL_ID = local.persistent.cognito_user_pool_id  # member-service 점포 등록(AD-01)
       }
+      # 관측성(할 일 16). gitops argocd/apps templates/observability.yaml의 loki Application이 쓴다
+      observability = {
+        loki = {
+          bucket  = local.persistent.loki_bucket
+          roleArn = module.irsa.role_arns["loki"]
+        }
+      }
     }
   })]
 

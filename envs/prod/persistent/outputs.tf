@@ -152,3 +152,13 @@ output "workflow_dispatch_function" {
   description = "켜고 끄기 워크플로 실행 요청 Lambda 이름 (README 4-11 시험)"
   value       = module.cluster_dispatch.function_name
 }
+
+output "loki_bucket" {
+  description = "Loki 로그 버킷 이름 (cluster 묶음이 root Application에 넘긴다)"
+  value       = module.observability.loki_bucket
+}
+
+output "loki_bucket_arn" {
+  description = "Loki 로그 버킷 ARN (cluster 묶음 Loki IRSA 정책)"
+  value       = module.observability.loki_bucket_arn
+}

@@ -95,6 +95,13 @@ module "frontend" {
   deploy_branch = "main"
 }
 
+# 할 일 16: Loki 로그 버킷(S3, 14일). prod 로그는 지우지 않게 force_destroy를 켜지 않는다
+module "observability" {
+  source = "../../../modules/observability"
+
+  name_prefix = local.name_prefix
+}
+
 # 토스페이먼츠 테스트 키(prod도 테스트 키). 값은 Terraform에 넣지 않고 scripts/set-toss-key.ps1 -Env prod로 넣는다.
 resource "aws_secretsmanager_secret" "toss" {
   name                    = "${local.name_prefix}-toss"

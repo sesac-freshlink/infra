@@ -52,6 +52,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 할 일 13에서 정한 것: 프론트는 persistent `modules/frontend`(S3·CloudFront·배포 Role `freshlink-<env>-frontend-deploy`, frontend 레포 한 브랜치만). ALB 주소는 클러스터마다 바뀌어서 CloudFront `/api/*` 오리진은 `scripts/sync-api-origin.sh`(dev-cluster.yml create·`api-origin`)가 맞추고 Terraform은 `ignore_changes = [origin]`.
 - 할 일 14에서 정한 것: prod는 dev와 같은 모듈에 값만 다르다(README 4-12). 켜기 예약 없음(scheduler 켜기·노드 cron에 `null`을 넘겨 그 일정을 만들지 않는다. 오지 않는 날 cron은 AWS가 거부한다), RDS·nano 매일 21:00·23:00 중지, 클러스터 매일 21:05·23:05 삭제. 워크플로 Role 비밀은 환경마다 `AWS_<ENV>_CLUSTER_ROLE_ARN`.
 - 할 일 15에서 정한 것: 서비스 `main` push → `.github` spring-build.yml `promote`가 합친 dev 커밋(머지 커밋의 두 번째 부모) 태그를 gitops `envs/prod`에 커밋(빌드 없음). 기준 데이터는 `scripts/copy-reference-data.ps1`(점포·상품만, mysqldump).
+- 할 일 16에서 정한 것: 관측성 AWS 쪽은 persistent `modules/observability`(Loki 로그 버킷 `freshlink-<env>-loki-logs-<계정 끝 4자리>`, 15일 수명 주기)와 cluster IRSA `loki`(ServiceAccount `observability/loki`, 그 버킷만). 버킷 이름·Role ARN은 root 값 `cluster.observability.loki`로 넘긴다. 금요일 삭제는 Prometheus 리소스를 먼저 지워야 PVC가 지워진다.
 
 ---
 
