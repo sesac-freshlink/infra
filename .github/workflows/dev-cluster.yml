@@ -1,9 +1,12 @@
-# dev 클러스터 켜고 끄기 (aws-리소스-계획.md 6-5). Terraform으로 envs/dev/cluster를 만들고 지운다.
-# RDS·SSM 접속용 인스턴스·노드 수는 EventBridge Scheduler(envs/dev/persistent)가 맡는다.
+# 클러스터 켜고 끄기 (aws-리소스-계획.md 6-5). Terraform으로 envs/<env>/cluster를 만들고 지운다. env는 dev(기본)·prod.
+# RDS·SSM 접속용 인스턴스·노드 수는 EventBridge Scheduler(envs/<env>/persistent)가 맡는다.
+# 아래 GitHub 예약은 dev만 돈다. prod는 평소 꺼 두고, 사람이 Run workflow에서 env=prod로 켜고 끈다(할 일 14).
+# prod 밤 삭제는 EventBridge(envs/prod/persistent)가 prod-cluster.yml을 부르고, 그 워크플로가 이 파일을 env=prod로 부른다.
 # 예약 작업은 UTC다. 한국 시각 - 9시간. 몇 분 늦게 돌 수 있다.
 # GitHub는 사람이 몰리는 정각(특히 UTC 00:00)에 예약 실행을 늦추거나 아예 건너뛴다(2026-10-20 화 09:00 NAT 생성이 안 돎).
 # 그래서 정각을 피하고, 꼭 돌아야 하는 NAT 생성·클러스터 삭제는 뒤에 한 번 더 돈다. 두 번 돌아도 바뀌는 것이 없다.
 name: dev-cluster
+run-name: "${{ inputs.env || 'dev' }} ${{ inputs.action || 'schedule' }}"
 
 on:
   schedule:
@@ -21,31 +24,51 @@ on:
         type: choice
         required: true
         options: [create, destroy, nat-on, nat-off, api-origin, unlock]
+      env:
+        description: "환경. prod는 평소 꺼 두고 릴리스 확인·리허설·시연 날만 create, 끝나면 destroy"
+        type: choice
+        required: true
+        default: dev
+        options: [dev, prod]
       lock_id:
         description: "unlock일 때만: 실패한 작업 로그 'Lock Info'의 ID"
         type: string
         required: false
-
-# 두 작업이 같은 state를 동시에 건드리지 않게 한 줄로 세운다.
-concurrency:
-  group: dev-cluster
-  cancel-in-progress: false
+  # prod-cluster.yml(EventBridge가 부르는 prod 입구)이 env=prod로 부른다
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        required: true
+      env:
+        type: string
+        required: true
+      lock_id:
+        type: string
+        required: false
 
 permissions:
   id-token: write # GitHub OIDC로 AWS Role을 맡는다
   contents: read
 
+# 예약 실행에는 inputs가 없어서 dev가 된다.
 env:
   AWS_REGION: ap-northeast-2
-  CLUSTER: freshlink-dev-eks
-  NODEGROUP: freshlink-dev-nodes
-  ROOT: envs/dev/cluster
-  STATE_KEY: dev/cluster/terraform.tfstate # versions.tf backend key. 잠금 파일은 뒤에 .tflock이 붙는다
+  TARGET_ENV: ${{ inputs.env || 'dev' }}
+  CLUSTER: freshlink-${{ inputs.env || 'dev' }}-eks
+  NODEGROUP: freshlink-${{ inputs.env || 'dev' }}-nodes
+  ROOT: envs/${{ inputs.env || 'dev' }}/cluster
+  STATE_KEY: ${{ inputs.env || 'dev' }}/cluster/terraform.tfstate # versions.tf backend key. 잠금 파일은 뒤에 .tflock이 붙는다
 
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # 두 작업이 같은 state를 동시에 건드리지 않게 환경마다 한 줄로 세운다(dev와 prod는 따로 돈다).
+    # 작업 단위로 둔다: prod-cluster.yml이 부를 때도 같은 줄에 선다.
+    concurrency:
+      group: ${{ inputs.env || 'dev' }}-cluster
+      cancel-in-progress: false
     steps:
       - name: 할 일 고르기
         id: what
@@ -64,6 +87,10 @@ jobs:
             *)              action="${INPUT}" ;;
           esac
           [ -n "${action}" ] || { echo "할 일을 정하지 못했다"; exit 1; }
+          case "${TARGET_ENV}" in
+            dev|prod) ;;
+            *) echo "::error::env는 dev 또는 prod다: ${TARGET_ENV}"; exit 1 ;;
+          esac
 
           # GitHub는 예약 실행을 몇 시간씩 늦게 돌리기도 한다(2026-10-19 21:10 NAT 삭제가 다음 날 03:41에 돎).
           # 늦게 온 예약이 낮에 NAT를 지우거나 밤에 NAT를 켜지 않게, 예약 실행은 한국 시각이 맞을 때만 한다.
@@ -84,7 +111,25 @@ jobs:
             fi
           fi
           echo "action=${action}" >> "$GITHUB_OUTPUT"
-          echo "### dev-cluster: ${action}" >> "$GITHUB_STEP_SUMMARY"
+          echo "### ${TARGET_ENV} 클러스터: ${action}" >> "$GITHUB_STEP_SUMMARY"
+
+      # 환경마다 Role이 따로다(freshlink-<env>-cluster-actions, 각 환경 persistent 출력 cluster_actions_role_arn).
+      # prod 비밀이 비어 있을 때 dev Role로 넘어가지 않게 여기서 멈춘다.
+      - name: Role 고르기
+        id: role
+        if: steps.what.outputs.action != 'skip'
+        env:
+          DEV_ROLE: ${{ secrets.AWS_DEV_CLUSTER_ROLE_ARN }}
+          PROD_ROLE: ${{ secrets.AWS_PROD_CLUSTER_ROLE_ARN }}
+        run: |
+          if [ "$TARGET_ENV" = prod ]; then role="$PROD_ROLE"; name=AWS_PROD_CLUSTER_ROLE_ARN
+          else role="$DEV_ROLE"; name=AWS_DEV_CLUSTER_ROLE_ARN; fi
+          [ -n "$role" ] || { echo "::error::infra 레포 Actions 비밀 ${name}이 없다 (README 4-12)"; exit 1; }
+          case "$role" in
+            *":role/freshlink-${TARGET_ENV}-cluster-actions") ;;
+            *) echo "::error::${name}이 freshlink-${TARGET_ENV}-cluster-actions Role이 아니다"; exit 1 ;;
+          esac
+          echo "arn=${role}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7
         if: steps.what.outputs.action != 'skip'
@@ -92,7 +137,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v6
         if: steps.what.outputs.action != 'skip'
         with:
-          role-to-assume: ${{ secrets.AWS_DEV_CLUSTER_ROLE_ARN }}
+          role-to-assume: ${{ steps.role.outputs.arn }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 7200
 
@@ -143,6 +188,21 @@ jobs:
           echo "잠금 ${LOCK_ID}를 풀었다" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------- create
+      # prod RDS·접속용 인스턴스는 켜는 일정이 없다. 클러스터를 만드는 동안(15~20분) 같이 켠다.
+      # dev는 EventBridge가 평일 09:00에 켠다.
+      - name: prod RDS·접속용 인스턴스 켜기
+        if: steps.what.outputs.action == 'create' && env.TARGET_ENV == 'prod'
+        run: |
+          state=$(aws rds describe-db-instances --db-instance-identifier freshlink-prod-mysql \
+            --query 'DBInstances[0].DBInstanceStatus' --output text)
+          echo "RDS ${state}"
+          if [ "$state" = stopped ]; then
+            aws rds start-db-instance --db-instance-identifier freshlink-prod-mysql >/dev/null
+          fi
+          id=$(aws ssm get-parameter --name /freshlink/prod/ssm-access-instance-id --query Parameter.Value --output text)
+          aws ec2 start-instances --instance-ids "$id" >/dev/null
+          echo "prod RDS(${state} → 켜기)·접속용 인스턴스 ${id} 켜기 요청" >> "$GITHUB_STEP_SUMMARY"
+
       - name: 클러스터 만들기
         if: steps.what.outputs.action == 'create'
         run: terraform -chdir=$ROOT apply -input=false -auto-approve -var nat_enabled=true
@@ -174,7 +234,7 @@ jobs:
         if: steps.what.outputs.action == 'create' || (steps.what.outputs.action == 'api-origin' && steps.cluster.outputs.exists == 'true')
         run: |
           aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
-          scripts/sync-api-origin.sh dev | tee -a "$GITHUB_STEP_SUMMARY"
+          scripts/sync-api-origin.sh "$TARGET_ENV" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------- NAT
       - name: NAT 만들기·지우기
@@ -275,7 +335,7 @@ jobs:
         if: steps.what.outputs.action == 'destroy'
         run: |
           set -uo pipefail
-          vpc=$(aws ec2 describe-vpcs --filters Name=tag:Name,Values=freshlink-dev-vpc --query 'Vpcs[0].VpcId' --output text)
+          vpc=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=freshlink-${TARGET_ENV}-vpc" --query 'Vpcs[0].VpcId' --output text)
           # destroy 직후에는 EKS·NAT가 쓰던 ENI가 아직 정리 중일 수 있다. 최대 10분 동안 30초마다 다시 본다.
           # RDS ENI는 RDS가 꺼져 있으면 available로 보이므로 세지 않는다(지우면 안 된다).
           for i in $(seq 1 20); do
@@ -310,6 +370,21 @@ jobs:
             exit 1
           fi
           echo "남은 리소스 없음"
+
+      # prod는 클러스터를 지우면 RDS·접속용 인스턴스도 끈다(EventBridge 21:00·23:00 끄기보다 먼저).
+      - name: prod RDS·접속용 인스턴스 끄기
+        if: steps.what.outputs.action == 'destroy' && env.TARGET_ENV == 'prod'
+        run: |
+          state=$(aws rds describe-db-instances --db-instance-identifier freshlink-prod-mysql \
+            --query 'DBInstances[0].DBInstanceStatus' --output text)
+          echo "RDS ${state}"
+          # 켜는 중(starting)에는 끌 수 없다. 그때는 EventBridge 21:00·23:00 끄기에 맡긴다
+          if [ "$state" = available ]; then
+            aws rds stop-db-instance --db-instance-identifier freshlink-prod-mysql >/dev/null
+          fi
+          id=$(aws ssm get-parameter --name /freshlink/prod/ssm-access-instance-id --query Parameter.Value --output text)
+          aws ec2 stop-instances --instance-ids "$id" >/dev/null
+          echo "prod RDS(${state})·접속용 인스턴스 ${id} 끄기 요청" >> "$GITHUB_STEP_SUMMARY"
 
       # 취소·시간 초과로 terraform이 강제 종료되면 잠금 파일이 남는다. 이 러너가 건 잠금이면 바로 푼다.
       # 다른 곳(PC, 다른 작업)이 건 잠금은 건드리지 않는다.
