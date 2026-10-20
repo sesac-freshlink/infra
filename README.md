@@ -17,7 +17,7 @@
 
 관측성(할 일 16) AWS 쪽 PR [#42](https://github.com/sesac-freshlink/infra/pull/42)가 `main`에 합쳐졌다. 코드만 들어갔고 AWS에는 아직 아무것도 생기지 않았다. 아래를 **순서대로** 한다. 명령과 성공 기준은 [4-14](#4-14-관측성-붙이기-할-일-16-김진아)에 있다.
 
-- [ ] **1. persistent 적용** (4-14의 1): `C:\fresh-link\repos\infra`에서 `git checkout main`, `git pull` 뒤 `envs/dev/persistent`, `envs/prod/persistent` 순서로 `terraform apply`. 둘 다 "Plan: 5 to add"만 나와야 한다. 클러스터는 꺼져 있어도 된다.
+- [ ] **1. persistent 적용** (4-14의 1): `C:\fresh-link\repos\infra`에서 `git checkout main`, `git pull` 뒤 두 폴더 모두 `terraform init`을 먼저 하고, `envs/dev/persistent`, `envs/prod/persistent` 순서로 `terraform apply`. 둘 다 "Plan: 5 to add"만 나와야 한다. 클러스터는 꺼져 있어도 된다.
 - [ ] **2. dev cluster 적용** (4-14의 2): dev-cluster 워크플로를 env `dev`, action `create`로 돌린다. 클러스터가 켜져 있는 평일 09:00~21:00에 하면 바로 들어간다. 꺼져 있으면 다음 생성 때 자동으로 들어가니 건너뛰어도 된다.
 - [ ] **3. gitops PR 합치기**: [gitops #6](https://github.com/sesac-freshlink/gitops/pull/6)(관측성 앱)을 합친다. 2가 끝난 뒤에 합쳐야 Loki가 버킷 이름과 Role을 받는다.
 - [ ] **4. 나머지 PR 합치기** (순서 상관없음, CI가 초록이고 CodeRabbit 요청이 남지 않았을 때):
@@ -1225,6 +1225,11 @@ git checkout main
 git pull
 $env:AWS_PROFILE = "freshlink-admin"
 aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+# 새 모듈(observability)을 읽게 init을 먼저 한다. 안 하면 "Module not installed" 오류가 난다
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+#   둘 다 "Terraform has been successfully initialized!"가 나오면 성공
 
 terraform "-chdir=envs/dev/persistent" apply
 #   "Plan: 5 to add, 0 to change, 0 to destroy."를 보고 yes 입력 (버킷과 그 설정 4개. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
