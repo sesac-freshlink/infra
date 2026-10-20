@@ -1265,8 +1265,10 @@ kubectl -n observability port-forward svc/zipkin 9411:9411
 #   두 창 모두 "Forwarding from 127.0.0.1:..."이 나오면 성공
 ```
 
-1. 브라우저에서 http://localhost:3000 → **Dashboards** → 폴더 **FreshLink** → **FreshLink 서비스**. 서비스별 요청 수·지연·에러율·JVM 그래프가 보이면 성공.
-2. 같은 대시보드 로그 패널에 로그가 보이고, 위쪽 `search` 칸에 글자를 넣으면 그 줄만 걸러지면 성공.
+로그인은 하지 않는다. Grafana는 port-forward로 내 PC에서만 열리는 화면이라 익명 접속으로 설정했다(오른쪽 위 Sign in은 무시한다).
+
+1. 브라우저에서 http://localhost:3000 → **Dashboards** → 폴더 **FreshLink** → **FreshLink 서비스**. "떠 있는 파드"에 숫자가 나오면 Prometheus가 서비스를 읽고 있다. 요청 수·응답 시간·에러율 그래프는 HTTP 요청이 들어와야 생긴다. 서비스가 막 다시 떴으면 No data이니, 프론트 사이트에서 로그인하고 몇 번 눌러 본 뒤 1~2분 지나 Refresh 한다. 그래프가 보이면 성공.
+2. 같은 대시보드 아래 **로그 (Loki)** 패널에 로그가 보이면 성공. 맨 위 **로그 검색 (traceId 등)** 칸에 로그에 보이는 글자(예: `주문 만료`, 또는 로그의 traceId 값)를 넣고 Enter를 누르면 그 줄만 남는다.
 3. 로그 한 줄을 펼쳐 `traceId` 줄의 **Zipkin** 버튼을 누른다. gateway → 서비스 흐름이 보이면 성공. http://localhost:9411 에서 직접 찾아도 된다.
 
 Grafana·Zipkin 보는 방법과 할 일 16 완료 확인 순서는 `gitops/platform/observability/README.md` 5장에 있다. prod는 dev 확인 뒤 gitops `observability.enabled.prod`를 true로 바꾸면 같은 앱이 올라간다.
