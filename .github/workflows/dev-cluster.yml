@@ -315,6 +315,11 @@ jobs:
           kubectl delete ingress -A --all --timeout=5m
           kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace} {.metadata.name}{"\n"}{end}' \
             | while read -r ns name; do [ -n "$ns" ] && kubectl -n "$ns" delete svc "$name" --timeout=5m; done
+          # PVC를 쓰는 파드가 살아 있으면 PVC가 지워지지 않는다. Prometheus(관측성, 할 일 16)는 Operator가
+          # StatefulSet을 되살리므로 Prometheus 리소스부터 지워 파드를 내린다.
+          if kubectl get crd prometheuses.monitoring.coreos.com >/dev/null 2>&1; then
+            kubectl delete prometheus -A --all --timeout=5m
+          fi
           kubectl delete pvc -A --all --timeout=5m
 
           # 컨트롤러가 ALB와 EBS를 실제로 지울 때까지 기다린다(최대 10분)
