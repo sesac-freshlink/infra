@@ -50,7 +50,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 할 일 7에서 정한 것: IRSA Role은 cluster 묶음(`modules/irsa`, OIDC 공급자가 클러스터와 같이 생기고 지워진다). 켜고 끄기 워크플로 Role은 persistent 묶음 `freshlink-<env>-cluster-actions`(infra `main`만 신뢰, PowerUserAccess + `freshlink-<env>-*` IAM만). 클러스터·노드 그룹 이름은 persistent가 정하고 cluster가 remote state로 읽는다.
 - 할 일 8·9에서 정한 것: ArgoCD root Application은 cluster 묶음이 `charts/argocd-root`로 등록하고, 계정마다 다른 값(ECR 주소, 서비스 IRSA Role ARN, `AWS_REGION`·`COGNITO_ISSUER_URI`·`COGNITO_CLIENT_ID`·`COGNITO_USER_POOL_ID`)을 넘긴다. gitops는 공개 레포라 이 값을 적지 않는다. root·서비스 Application에는 finalizer를 두지 않는다(금요일 삭제 때 ArgoCD 컨트롤러를 먼저 멈춘다).
 - 할 일 13에서 정한 것: 프론트는 persistent `modules/frontend`(S3·CloudFront·배포 Role `freshlink-<env>-frontend-deploy`, frontend 레포 한 브랜치만). ALB 주소는 클러스터마다 바뀌어서 CloudFront `/api/*` 오리진은 `scripts/sync-api-origin.sh`(dev-cluster.yml create·`api-origin`)가 맞추고 Terraform은 `ignore_changes = [origin]`.
-- 할 일 14에서 정한 것: prod는 dev와 같은 모듈에 값만 다르다(README 4-12). 켜기 예약 없음(scheduler 켜기 cron은 오지 않는 날 `cron(0 0 1 1 ? 2199)`), RDS·nano 매일 21:00·23:00 중지, 클러스터 매일 21:05·23:05 삭제. 워크플로 Role 비밀은 환경마다 `AWS_<ENV>_CLUSTER_ROLE_ARN`.
+- 할 일 14에서 정한 것: prod는 dev와 같은 모듈에 값만 다르다(README 4-12). 켜기 예약 없음(scheduler 켜기·노드 cron에 `null`을 넘겨 그 일정을 만들지 않는다. 오지 않는 날 cron은 AWS가 거부한다), RDS·nano 매일 21:00·23:00 중지, 클러스터 매일 21:05·23:05 삭제. 워크플로 Role 비밀은 환경마다 `AWS_<ENV>_CLUSTER_ROLE_ARN`.
 - 할 일 15에서 정한 것: 서비스 `main` push → `.github` spring-build.yml `promote`가 합친 dev 커밋(머지 커밋의 두 번째 부모) 태그를 gitops `envs/prod`에 커밋(빌드 없음). 기준 데이터는 `scripts/copy-reference-data.ps1`(점포·상품만, mysqldump).
 
 ---

@@ -30,7 +30,7 @@ variable "ec2_instance_arns" {
 }
 
 variable "start_cron" {
-  description = "켜기 (EventBridge Scheduler cron). 기본 평일 09:00"
+  description = "켜기 (null이면 만들지 않는다) (EventBridge Scheduler cron). 기본 평일 09:00"
   type        = string
   default     = "cron(0 9 ? * MON-FRI *)"
 }
@@ -64,13 +64,13 @@ variable "eks_node_group_name" {
 }
 
 variable "nodes_up_cron" {
-  description = "노드 2대. 기본 화~금 09:10 (NAT가 08:50에 생긴 뒤, modules/workflow-dispatch. NAT 없이 뜬 노드는 붙지 못한다. 월요일은 클러스터 생성이 노드 2대로 만든다)"
+  description = "노드 2대 (null이면 만들지 않는다). 기본 화~금 09:10 (NAT가 08:50에 생긴 뒤, modules/workflow-dispatch. NAT 없이 뜬 노드는 붙지 못한다. 월요일은 클러스터 생성이 노드 2대로 만든다)"
   type        = string
   default     = "cron(10 9 ? * TUE-FRI *)"
 }
 
 variable "nodes_down_cron" {
-  description = "노드 0대. 기본 월~목 21:00 (금요일은 21:00에 클러스터를 지운다)"
+  description = "노드 0대 (null이면 만들지 않는다). 기본 월~목 21:00 (금요일은 21:00에 클러스터를 지운다)"
   type        = string
   default     = "cron(0 21 ? * MON-THU *)"
 }
