@@ -1226,13 +1226,12 @@ git pull
 $env:AWS_PROFILE = "freshlink-admin"
 aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
 
-# 새 모듈(observability)을 읽게 init을 먼저 한다. 안 하면 "Module not installed" 오류가 난다
 terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
-terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
-#   둘 다 "Terraform has been successfully initialized!"가 나오면 성공
-
+#   새 모듈(observability)을 받는다. "Terraform has been successfully initialized!"가 나오면 성공 (안 하면 "Module not installed" 오류)
 terraform "-chdir=envs/dev/persistent" apply
 #   "Plan: 5 to add, 0 to change, 0 to destroy."를 보고 yes 입력 (버킷과 그 설정 4개. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+#   새 모듈(observability)을 받는다. "Terraform has been successfully initialized!"가 나오면 성공
 terraform "-chdir=envs/prod/persistent" apply
 #   prod 묶음(4-12)을 이미 만들었으면 같은 "Plan: 5 to add"를 보고 yes 입력
 terraform "-chdir=envs/dev/persistent" output -raw loki_bucket
