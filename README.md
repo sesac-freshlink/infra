@@ -54,8 +54,8 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 | `global/` | `global/terraform.tfstate` | state 버킷, Budgets, ECR, GitHub OIDC 공급자, 팀원 IAM | 그대로 둔다 |
 | `envs/dev/persistent/` | `dev/persistent/terraform.tfstate` | VPC, RDS, nano, Secrets, S3·CloudFront, SQS, Scheduler, Loki 버킷, Cognito | 그대로 둔다 (RDS·nano는 중지) |
 | `envs/dev/cluster/` | `dev/cluster/terraform.tfstate` | EKS, 노드 그룹, NAT, Helm 설치물 | 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬 |
-| `envs/prod/persistent/` | `prod/persistent/terraform.tfstate` | dev와 같은 모듈, 변수만 다름 | 그대로 둔다 |
-| `envs/prod/cluster/` | `prod/cluster/terraform.tfstate` | dev와 같은 모듈 | 평소 꺼 두고 릴리스 확인·리허설·시연 날만 켬 |
+| `envs/prod/persistent/` | `prod/persistent/terraform.tfstate` | dev와 같은 모듈, 값만 다름(4-12) | 그대로 둔다 (RDS·nano는 평소 중지) |
+| `envs/prod/cluster/` | `prod/cluster/terraform.tfstate` | dev와 같은 모듈 | 평소 없음. 릴리스 확인·리허설·시연 날만 사람이 만들고, 매일 21:05에 지운다 |
 
 의존 방향은 `envs/<env>/cluster` → `envs/<env>/persistent` → `global` 한쪽뿐이다. dev와 prod는 서로를 참조하지 않는다. `cluster`만 지워도 DB 데이터, 이미지, 회원 계정은 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
 
@@ -75,6 +75,15 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 "EventBridge Scheduler → GitHub Actions"는 EventBridge가 정해진 시각에 Lambda `freshlink-dev-workflow-dispatch`를 부르고, 그 Lambda가 dev-cluster 워크플로의 **Run workflow**(workflow_dispatch)를 대신 누른다는 뜻이다. Terraform은 그대로 GitHub Actions에서 돈다(4-11).
 
 GitHub 예약(schedule)만 쓰지 않는 이유: 2026-10-20 화 09:00 NAT 생성 예약이 아예 돌지 않았고, 전날 21:10·23:00 NAT 삭제 예약은 03:41·04:34에야 돌았다. GitHub는 붐빌 때 예약 실행을 몇 시간 늦추거나 건너뛴다. 그래서 시각은 EventBridge가 지키고, 워크플로 안의 GitHub 예약(08:50·09:25 NAT 생성, 21:05·22:35 삭제 등, 정각은 피함)은 예비로만 남긴다. 늦게 온 GitHub 예약은 한국 시각을 보고 맞지 않으면 건너뛴다: NAT 생성은 평일 8시부터 20시까지, NAT 삭제는 21시부터 다음 날 8시까지, 클러스터 생성은 월요일 8시부터 20시까지, 삭제는 금요일 21시부터 일요일까지. 같은 일이 두 번 돌아도 바뀌는 것이 없다(한 줄로 서서 돌고, 이미 된 상태면 변경 없음). 자세한 경위는 [트러블슈팅 기록](docs/troubleshooting/2026-10-20-nat-예약-빠짐-노드-안-붙음.md).
+
+켜고 끄기 (prod, 한국 시각). 켜는 예약은 없다. 필요한 날 사람이 dev-cluster 워크플로를 `env=prod`, `create`로 돌린다(RDS·nano도 같이 켠다).
+
+| 시각 | 작업 | 도구 |
+| --- | --- | --- |
+| 매일 21:00 / 23:00 | RDS·nano 중지 / 한 번 더 (+ 노드 0대) | EventBridge Scheduler |
+| 매일 21:05 / 23:05 | 클러스터 묶음 삭제 / 한 번 더 (없으면 그대로) | EventBridge Scheduler → GitHub Actions(prod-cluster) |
+
+prod 삭제는 Lambda `freshlink-prod-workflow-dispatch`가 `prod-cluster` 워크플로를 누르고, 그 워크플로가 dev-cluster 워크플로를 `env=prod`로 부른다. Lambda는 `action` 하나만 넘길 수 있어서 env를 정해 둔 입구를 따로 뒀다. 같은 일을 하는 워크플로는 dev-cluster 하나다.
 
 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 
@@ -120,6 +129,7 @@ infra/
 - [x] 노드 그룹 일정(화·수·목·금 09:10 desired 2, 월·화·수·목 21:00 desired 0, 평일 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 7)
 - [x] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
 - [x] GitHub Actions `.github/workflows/dev-cluster.yml`: 월요일 클러스터 생성, 화·수·목·금 NAT 생성, 월·화·수·목 NAT 삭제, 금요일 클러스터 삭제(Ingress·PVC 먼저 정리), 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch) (할 일 7)
+- [x] prod: 같은 워크플로를 `env=prod`로(수동 버튼의 env, EventBridge용 입구 `prod-cluster.yml`). 켜기 예약 없음, 매일 21:05·23:05 클러스터 삭제, 매일 21:00·23:00 RDS·nano 중지 (할 일 14)
 
 ## 할 일: 인증 (Cognito, C-01·C-02·C-03)
 
@@ -970,6 +980,209 @@ gh run list --repo sesac-freshlink/infra --workflow dev-cluster.yml --limit 1
 aws scheduler list-schedules --group-name freshlink-dev-workflow-dispatch --query "Schedules[].{name:Name,state:State}" --output table
 #   create, nat-on, nat-off, destroy, nat-off-late 5개가 ENABLED면 성공
 ```
+
+### 4-12. prod 환경 만들기 (할 일 14, 김진아)
+
+`envs/prod/persistent`, `envs/prod/cluster`는 dev와 **같은 모듈**을 부르고 아래 값만 다르다. 모듈 코드는 바꾸지 않았다.
+
+| | dev | prod |
+| --- | --- | --- |
+| 이름 | `freshlink-dev-*` | `freshlink-prod-*` |
+| VPC | `10.0.0.0/16` | `10.1.0.0/16` |
+| 큐 | 공용 `dev-` + 개발자별 `dev-taewoo-`·`dev-kyungwoo-` | 공용 `prod-`만 |
+| Cognito | `freshlink-dev-users`, PowerShell 시험 토큰(`ADMIN_USER_PASSWORD_AUTH`) 허용 | `freshlink-prod-users`, 시험 토큰 없음 |
+| 콜백 URL | 없음 (Hosted UI를 쓰지 않고 화면이 SRP로 로그인한다) | 없음 |
+| 프론트 배포 | frontend `dev` 브랜치 | frontend `main` 브랜치 |
+| 켜기 | 평일 자동 (2장 표) | 사람이 dev-cluster 워크플로 `env=prod`, `create` |
+| 끄기 | 2장 표 | 매일 21:00·23:00 RDS·nano 중지, 21:05·23:05 클러스터 삭제 |
+| 지운 비밀 복구 대기 | 0일 | 7일 |
+
+- 리소스: persistent 94개(네트워크 19, RDS·nano·비밀·SSM 파라미터 19, 끄기 일정 12, 워크플로 호출 10, 워크플로 Role 4, Cognito 12, 큐 6, 프론트 11, 토스 비밀 1), cluster 46개(dev와 같다).
+- 비용: 꺼 둔 동안은 RDS 저장 공간·비밀 6개·nano 디스크 정도로 하루 0.2 USD 안팎이다. 켠 날은 dev 하루와 같다([비용-계산.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EB%B9%84%EC%9A%A9-%EA%B3%84%EC%82%B0.md)의 prod 8일).
+- 팀원 계정(`freshlink-developers`)은 prod를 읽지도 못한다. 이름·태그가 `prod`라서 5장 권한에 걸리지 않는다.
+
+**0) 준비.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell(창 1)에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+gh auth status                       # "Logged in to github.com"이 나오면 성공. 아니면 gh auth login
+```
+
+**1) prod 유지 묶음 만들기 (apply 1번째).** RDS가 뜨는 데 10~15분 걸린다.
+
+```powershell
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+#   "Terraform has been successfully initialized!"가 나오면 성공
+terraform "-chdir=envs/prod/persistent" apply
+#   "Plan: 94 to add, 0 to change, 0 to destroy."를 보고 yes 입력. 숫자가 다르면 no 하고 스레드에 붙여 넣는다
+#   "Apply complete! Resources: 94 added"가 나오면 성공
+```
+
+**2) GitHub에 값 넣기.** 워크플로가 맡을 prod Role(infra 비밀)과 프론트 prod 값(frontend Variables 5개)을 terraform output에서 바로 넣는다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\set-github-values.ps1 -Env prod
+#   AWS_PROD_CLUSTER_ROLE_ARN과 PROD_로 시작하는 5줄, 마지막에 "완료"가 나오면 성공
+```
+
+**3) 밤 삭제 호출 준비.** prod Lambda도 dev와 같은 GitHub 토큰(infra Actions 읽기·쓰기)을 쓴다. dev 비밀 값을 그대로 옮긴다.
+
+```powershell
+$t = aws secretsmanager get-secret-value --secret-id freshlink-dev-workflow-dispatch-token --query SecretString --output text
+aws secretsmanager put-secret-value --secret-id (terraform "-chdir=envs/prod/persistent" output -raw workflow_dispatch_token_secret) --secret-string $t
+Remove-Variable t
+#   "VersionId"가 보이면 성공
+
+Set-Content "$env:TEMP\dispatch.json" '{"action":"unlock"}' -Encoding ascii
+aws lambda invoke --function-name (terraform "-chdir=envs/prod/persistent" output -raw workflow_dispatch_function) --payload "fileb://$env:TEMP\dispatch.json" "$env:TEMP\dispatch-out.json"
+Get-Content "$env:TEMP\dispatch-out.json"
+#   {"action": "unlock", "status": 204} 가 나오면 성공
+gh run list --repo sesac-freshlink/infra --workflow prod-cluster.yml --limit 1
+#   1분쯤 뒤 맨 위 줄이 ✓면 성공 (요약에 "잠금 없음". prod Role로 AWS에 들어갔다는 뜻)
+```
+
+**4) prod DB 준비.** PowerShell 창을 하나 더 열고(창 2) 포트 포워딩을 연다. dev와 겹치지 않게 3308을 쓴다.
+
+```powershell
+cd C:\fresh-link\repos\infra
+$env:AWS_PROFILE = "freshlink-admin"
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env prod -LocalPort 3308
+#   "Waiting for connections..."가 나오면 성공
+#   TargetNotConnected가 나오면 새 인스턴스의 SSM 에이전트가 권한을 아직 못 받은 것이다(dev 첫날과 같다).
+#   창 1에서 아래를 치고 2분 뒤 다시 연다:
+#   aws ec2 reboot-instances --instance-ids (terraform "-chdir=envs/prod/persistent" output -raw ssm_access_instance_id)
+```
+
+창 1에서 친다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\db-init.ps1 -Env prod -LocalPort 3308
+#   마지막에 inventory, member, orders 세 줄과 inventory_app, member_app, order_app 세 줄이 나오면 성공
+powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1 -Env prod
+#   dev와 같은 토스 테스트 키를 넣는다. "완료: freshlink-prod-toss 에 테스트 키를 넣었다."가 나오면 성공
+```
+
+**5) prod Cognito 점주 시드 (할 일 15).** RDS가 필요 없다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod
+#   마지막 표에 admin@freshlink.test(ADMIN)과 owner1·owner2·owner3@freshlink.test(OWNER, storeId 1·2·3) 네 줄이 나오면 성공
+#   비밀번호는 dev와 다르다. 필요할 때 aws secretsmanager get-secret-value --secret-id freshlink-prod-seed-accounts --query SecretString --output text
+```
+
+**6) prod 클러스터 만들기 (apply 2번째).** 15~20분 걸린다.
+
+```powershell
+terraform "-chdir=envs/prod/cluster" init "-backend-config=../../../backend.hcl"
+#   "Terraform has been successfully initialized!"가 나오면 성공
+terraform "-chdir=envs/prod/cluster" apply
+#   "Plan: 46 to add, 0 to change, 0 to destroy."를 보고 yes 입력
+#   15~20분 뒤 "Apply complete! Resources: 46 added"가 나오면 성공
+```
+
+**7) 확인 (할 일 14 완료 기준).**
+
+```powershell
+aws eks update-kubeconfig --name freshlink-prod-eks --region ap-northeast-2
+kubectl get nodes                          # 두 줄이 STATUS Ready면 성공
+kubectl -n argocd get applications         # root가 보이면 성공
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2   # kubectl을 dev로 돌려 둔다 (dev 클러스터가 없으면 오류가 나도 괜찮다)
+```
+
+서비스 Application 5개는 아직 `Unknown`이고 메시지가 "image.tag가 필요하다"다. prod 태그는 첫 release 머지(4-13)가 넣으므로 지금은 이것이 정상이다.
+
+**8) prod 끄기.** 확인이 끝나면 바로 끈다. 깜빡해도 21:05에 지워진다.
+
+1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml 을 연다.
+2. **Run workflow** → action `destroy`, env `prod` → **Run workflow**. 15분쯤 걸린다.
+3. 끝난 작업의 요약 표가 전부 "없음"이고 "prod RDS(...)·접속용 인스턴스 ... 끄기 요청"이 보이면 성공.
+
+```powershell
+aws rds describe-db-instances --db-instance-identifier freshlink-prod-mysql --query "DBInstances[0].DBInstanceStatus" --output text
+#   "stopping" 또는 "stopped"면 성공
+```
+
+다음에 켤 때는 같은 버튼에서 action `create`, env `prod`를 고른다. RDS·nano도 같이 켜지고, 20분쯤 뒤 요약에 "ArgoCD 준비됨"이 나온다. 저녁에도 켜 둬야 하는 날(시연 등)은 `envs/prod/persistent`를 `-var=scheduler_enabled=false`로 apply하고, 끝나면 기본값으로 다시 apply한다.
+
+### 4-13. prod 승격·기준 데이터 복사 (할 일 15, 김진아)
+
+```mermaid
+flowchart LR
+    D["서비스 레포 dev<br/>(dev CI가 이미지 a1b2c3d를 올림)"] -- "release PR<br/>Create a merge commit" --> M["서비스 레포 main"]
+    M -- "ci 워크플로 promote<br/>빌드 없음, ECR에 a1b2c3d가 있는지만 확인" --> G["gitops envs/prod/서비스<br/>image.tag a1b2c3d"]
+    G -- "prod ArgoCD" --> K["prod EKS"]
+```
+
+- 서비스 레포 `main`에 합쳐지면 `.github` 재사용 워크플로의 `promote` 작업이 돈다. 합친 커밋의 두 번째 부모(= 합친 `dev` 커밋)의 7자리가 dev CI가 이미 올린 이미지 태그다. 그 이미지가 ECR에 있으면 gitops `envs/prod/<서비스>/values.yaml`에 커밋한다(`chore(<서비스>): prod image <7자리>`). 다시 빌드하지 않는다.
+- **release PR은 반드시 "Create a merge commit"으로 합친다.** Squash로 합치면 dev 커밋과 이어지지 않아 "ECR에 없다"로 멈춘다. 그때는 `dev` → `main` release PR을 한 번 더 만들어 Merge commit으로 합친다.
+- dev CI가 아직 도는 중에 합쳐서 멈췄으면, dev CI가 끝난 뒤 서비스 레포 Actions → ci → **Run workflow**(branch `main`)로 다시 승격한다.
+- prod 클러스터가 꺼져 있어도 gitops 커밋은 쌓인다. 켜면 ArgoCD가 마지막 태그로 맞춘다.
+- 프론트는 frontend 레포 `main`에 합치면 prod Cognito 값으로 빌드해서 prod 버킷에 올린다(4-12의 2)가 넣은 `PROD_*` Variables).
+- 기준 데이터는 점포(`member.store`)와 상품(`inventory.product`)만 옮긴다. 회원·주문·재고(로트·입고·예약·폐기·원장)는 옮기지 않는다. prod 재고는 prod 시뮬레이터 입고로 만든다.
+
+**1) 서비스 release.** 서비스 레포 5개(gateway, member-service, inventory-service, order-service, logistics-simulator)마다 한다. 각 레포의 `dev`에 "main push 승격" PR(ci.yml에 `main` 추가)이 먼저 합쳐져 있어야 한다.
+
+1. 서비스 레포의 `dev` CI가 초록색인지 본다(Actions → ci, branch dev 맨 위 줄).
+2. **Pull requests → New pull request** → base `main`, compare `dev` → 제목 `release: 10/xx 배포` → **Create pull request**.
+3. PR 검사(빌드·테스트)가 초록색이 되면 **Merge pull request** 옆 ▼에서 **Create a merge commit**을 고르고 합친다.
+4. Actions → ci 맨 위 줄(branch main)을 눌러 `promote` 요약에 "gitops 커밋: envs/prod/<서비스>/values.yaml → 7자리"가 나오면 성공.
+
+```powershell
+# 다섯 개 다 했으면: prod 태그와 dev 태그 비교
+$g = "https://raw.githubusercontent.com/sesac-freshlink/gitops/main/envs"
+foreach ($s in "gateway","member-service","inventory-service","order-service","logistics-simulator") {
+  $d = ((Invoke-WebRequest "$g/dev/$s/values.yaml" -UseBasicParsing).Content | Select-String '  tag: "(.*)"').Matches[0].Groups[1].Value
+  $p = ((Invoke-WebRequest "$g/prod/$s/values.yaml" -UseBasicParsing).Content | Select-String '  tag: "(.*)"').Matches[0].Groups[1].Value
+  "{0,-20} dev {1}  prod {2}" -f $s, $d, $p
+}
+#   prod 칸이 모두 채워지면 성공 (그 사이 dev에 새 push가 있었으면 dev 칸이 더 새 태그일 수 있다)
+```
+
+**2) prod 켜기.** 4-12의 8) 버튼에서 action `create`, env `prod`. 요약에 "ArgoCD 준비됨"과 CloudFront `/api` 오리진 줄이 나오면 성공. 이미 켜져 있으면 action `api-origin`, env `prod`만 돌린다.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-prod-eks --region ap-northeast-2
+kubectl -n argocd get applications                       # 서비스 5개가 Synced·Healthy면 성공
+kubectl -n freshlink get deploy -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image
+#   이미지 끝 7자리가 1)의 prod 칸과 같으면 성공 (첫 release 완료 기준)
+```
+
+**3) 기준 데이터 복사.** prod 서비스가 한 번 떠서 Flyway가 표를 만든 뒤에 한다. PowerShell 창 두 개에서 포트 포워딩을 연다(dev는 평일 09:00~21:00에만 켜져 있다).
+
+```powershell
+# 창 2
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env dev -LocalPort 3307
+# 창 3
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env prod -LocalPort 3308
+#   두 창 모두 "Waiting for connections..."가 나오면 성공
+```
+
+창 1에서 친다. `mysqldump.exe`는 PC에 깔린 MySQL Server(`C:\Program Files\MySQL\MySQL Server 8.0\bin`)의 것을 저절로 찾는다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\copy-reference-data.ps1
+#   마지막 dev·prod 표의 stores·products가 같고, 점포 1·2·3이 ACTIVE·owner1·2·3 이메일로 나오면 성공
+#   "멈춤: prod에 표가 없다"면 2)의 member-service·inventory-service가 Healthy인지 먼저 본다
+```
+
+- 점포의 점주는 dev Cognito 사용자라 prod에서는 맞지 않는다. 스크립트가 넣은 뒤 prod에 없는 점주를 떼고(PENDING) 4-12의 5)에서 만든 prod 점주 owner1·2·3을 점포 1·2·3에 다시 잇는다. dev에서 시험으로 만든 다른 점포는 prod에서 PENDING으로 남는다.
+- 여러 번 돌려도 된다. prod에 이미 있는 점포·상품은 건드리지 않는다.
+
+**4) prod 재고 만들기.** 시뮬레이터 입고(dev 4-8과 같다).
+
+```powershell
+kubectl -n freshlink port-forward svc/logistics-simulator 8085:8080
+#   브라우저에서 http://localhost:8085 → 입고 버튼. 창에서 Ctrl+C로 끝낸다
+```
+
+**5) 프론트 release.** frontend 레포에서 1)과 같이 `dev` → `main` PR을 만들어 합친다(합치는 방식은 상관없다. 프론트는 다시 빌드한다). Actions → frontend-deploy 맨 위 줄 요약에 "prod 배포: https://....cloudfront.net"이 나오면 성공.
+
+**6) 시나리오 (할 일 15 완료 기준).** 5)의 prod 주소에서 dev와 같은 흐름을 따라간다: 점주 owner1 로그인(비밀번호는 4-12의 5) 비밀) → 재고 화면, 새 메일로 손님 가입 → 상품 목록 → 주문·결제.
+
+**7) 끄기.** 4-12의 8).
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

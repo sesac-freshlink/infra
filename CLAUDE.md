@@ -40,7 +40,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 |------|----------|--------|-----------|
 | `global/` | `global` | 두 환경 공용: ECR 5개, GitHub OIDC 공급자, Terraform state 저장소, Budgets | 그대로 둔다 |
 | `envs/<env>/persistent/` | `dev/persistent`, `prod/persistent` | VPC·서브넷, RDS, SSM 접속용 t4g.nano, Secrets Manager, S3·CloudFront, SQS, IAM, EventBridge Scheduler, Loki 로그 버킷, Cognito User Pool·트리거 Lambda | 그대로 둔다 (RDS·nano는 중지) |
-| `envs/<env>/cluster/` | `dev/cluster`, `prod/cluster` | EKS, 노드 그룹, NAT, Helm(ArgoCD, AWS Load Balancer Controller, metrics-server, External Secrets Operator) | dev: 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬. prod: 같은 워크플로를 `env=prod`로 쓰되 평소 꺼 두고 릴리스 확인·리허설·시연 날만 켬. prod 켜기 cron은 할 일 15에서 정할 때까지 넣지 않음 |
+| `envs/<env>/cluster/` | `dev/cluster`, `prod/cluster` | EKS, 노드 그룹, NAT, Helm(ArgoCD, AWS Load Balancer Controller, metrics-server, External Secrets Operator) | dev: 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬. prod: 같은 워크플로를 `env=prod`로 쓴다(EventBridge용 입구 `prod-cluster.yml`). 평소 없음, 필요한 날 사람이 create, 매일 21:05·23:05 삭제. 켜기 예약은 두지 않는다(할 일 14) |
 
 - 배포(이 레포 밖): 서비스 레포 `dev` 브랜치 push → ECR(태그 = 커밋 7자리) → gitops `envs/dev` → dev 클러스터. `main` 머지 → 다시 빌드하지 않고 같은 이미지 태그를 gitops `envs/prod`로 승격 → prod 클러스터. ECR과 서비스 CI가 맡는 GitHub OIDC Role은 두 환경 공용이다. `dev` 브랜치가 맡을 수 있는 Role에는 prod 쓰기 권한(prod 버킷 쓰기, prod terraform 실행 등)을 주지 않는다.
 - 팀원 IAM 그룹 `freshlink-developers`는 dev 리소스만 쓴다. prod는 읽기 권한도 없다.
@@ -50,7 +50,8 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 할 일 7에서 정한 것: IRSA Role은 cluster 묶음(`modules/irsa`, OIDC 공급자가 클러스터와 같이 생기고 지워진다). 켜고 끄기 워크플로 Role은 persistent 묶음 `freshlink-<env>-cluster-actions`(infra `main`만 신뢰, PowerUserAccess + `freshlink-<env>-*` IAM만). 클러스터·노드 그룹 이름은 persistent가 정하고 cluster가 remote state로 읽는다.
 - 할 일 8·9에서 정한 것: ArgoCD root Application은 cluster 묶음이 `charts/argocd-root`로 등록하고, 계정마다 다른 값(ECR 주소, 서비스 IRSA Role ARN, `AWS_REGION`·`COGNITO_ISSUER_URI`·`COGNITO_CLIENT_ID`·`COGNITO_USER_POOL_ID`)을 넘긴다. gitops는 공개 레포라 이 값을 적지 않는다. root·서비스 Application에는 finalizer를 두지 않는다(금요일 삭제 때 ArgoCD 컨트롤러를 먼저 멈춘다).
 - 할 일 13에서 정한 것: 프론트는 persistent `modules/frontend`(S3·CloudFront·배포 Role `freshlink-<env>-frontend-deploy`, frontend 레포 한 브랜치만). ALB 주소는 클러스터마다 바뀌어서 CloudFront `/api/*` 오리진은 `scripts/sync-api-origin.sh`(dev-cluster.yml create·`api-origin`)가 맞추고 Terraform은 `ignore_changes = [origin]`.
-- 정하지 않은 값은 지어내지 않는다: prod 켜는 방법 세부·prod 켜기 cron 여부(할 일 15).
+- 할 일 14에서 정한 것: prod는 dev와 같은 모듈에 값만 다르다(README 4-12). 켜기 예약 없음(scheduler 켜기 cron은 오지 않는 날 `cron(0 0 1 1 ? 2199)`), RDS·nano 매일 21:00·23:00 중지, 클러스터 매일 21:05·23:05 삭제. 워크플로 Role 비밀은 환경마다 `AWS_<ENV>_CLUSTER_ROLE_ARN`.
+- 할 일 15에서 정한 것: 서비스 `main` push → `.github` spring-build.yml `promote`가 합친 dev 커밋(머지 커밋의 두 번째 부모) 태그를 gitops `envs/prod`에 커밋(빌드 없음). 기준 데이터는 `scripts/copy-reference-data.ps1`(점포·상품만, mysqldump).
 
 ---
 

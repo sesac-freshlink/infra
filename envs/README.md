@@ -6,8 +6,8 @@
 | --- | --- | --- |
 | `dev/persistent` | `dev/persistent/terraform.tfstate` | 3 (RDS·SQS·Secrets), 그 뒤 Cognito·프론트·관측성 |
 | `dev/cluster` | `dev/cluster/terraform.tfstate` | 7 (EKS·NAT·IRSA·Helm, README 4-6) |
-| `prod/persistent` | `prod/persistent/terraform.tfstate` | 15 |
-| `prod/cluster` | `prod/cluster/terraform.tfstate` | 15 |
+| `prod/persistent` | `prod/persistent/terraform.tfstate` | 14 (dev와 같은 모듈, README 4-12) |
+| `prod/cluster` | `prod/cluster/terraform.tfstate` | 14 (README 4-12) |
 
 리소스 이름 규칙(팀원 IAM 권한이 이 이름·태그로 dev를 가려낸다):
 
