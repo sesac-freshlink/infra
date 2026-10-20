@@ -13,6 +13,18 @@
 
 설계 근거와 비용은 `.github` 레포 [`docs/aws-리소스-계획.md`](https://github.com/sesac-freshlink/.github/blob/main/docs/aws-%EB%A6%AC%EC%86%8C%EC%8A%A4-%EA%B3%84%ED%9A%8D.md)에 있다. 이 README와 다르면 그 문서를 따른다.
 
+## 지금 할 일 (김진아, 2026-10-20 기준)
+
+관측성(할 일 16) AWS 쪽 PR [#42](https://github.com/sesac-freshlink/infra/pull/42)가 `main`에 합쳐졌다. 코드만 들어갔고 AWS에는 아직 아무것도 생기지 않았다. 아래를 **순서대로** 한다. 명령과 성공 기준은 [4-14](#4-14-관측성-붙이기-할-일-16-김진아)에 있다.
+
+- [ ] **1. persistent 적용** (4-14의 1): `C:\fresh-link\repos\infra`에서 `git checkout main`, `git pull` 뒤 `envs/dev/persistent`, `envs/prod/persistent` 순서로 `terraform apply`. 둘 다 "Plan: 5 to add"만 나와야 한다. 클러스터는 꺼져 있어도 된다.
+- [ ] **2. dev cluster 적용** (4-14의 2): dev-cluster 워크플로를 env `dev`, action `create`로 돌린다. 클러스터가 켜져 있는 평일 09:00~21:00에 하면 바로 들어간다. 꺼져 있으면 다음 생성 때 자동으로 들어가니 건너뛰어도 된다.
+- [ ] **3. gitops PR 합치기**: [gitops #6](https://github.com/sesac-freshlink/gitops/pull/6)(관측성 앱)을 합친다. 2가 끝난 뒤에 합쳐야 Loki가 버킷 이름과 Role을 받는다.
+- [ ] **4. dev 확인** (4-14의 3): 5분 뒤 ArgoCD 앱 4개 Synced / Healthy, `observability` 파드 Running, 10분 뒤 Loki 버킷에 파일이 보이면 성공. Grafana·Zipkin 확인은 `gitops/platform/observability/README.md` 5장.
+- [ ] **5. prod 켜기 (나중)**: dev 확인이 끝나면 gitops `argocd/apps/values.yaml`의 `observability.enabled.prod`를 `true`로 바꾸는 PR을 낸다. prod 클러스터는 1에서 prod persistent를 적용한 뒤에만 만든다(안 하면 cluster 단계가 `loki_bucket_arn`이 없다며 실패한다).
+
+막히면 나온 메시지를 스레드에 그대로 붙여 넣는다. 다 끝나면 이 절을 지운다.
+
 ---
 
 ## 1. 무엇이 만들어지나
