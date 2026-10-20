@@ -13,6 +13,27 @@
 
 설계 근거와 비용은 `.github` 레포 [`docs/aws-리소스-계획.md`](https://github.com/sesac-freshlink/.github/blob/main/docs/aws-%EB%A6%AC%EC%86%8C%EC%8A%A4-%EA%B3%84%ED%9A%8D.md)에 있다. 이 README와 다르면 그 문서를 따른다.
 
+## 지금 할 일 (김진아, 2026-10-20 기준)
+
+관측성(할 일 16) AWS 쪽 PR [#42](https://github.com/sesac-freshlink/infra/pull/42)가 `main`에 합쳐졌다. 코드만 들어갔고 AWS에는 아직 아무것도 생기지 않았다. 아래를 **순서대로** 한다. 명령과 성공 기준은 [4-14](#4-14-관측성-붙이기-할-일-16-김진아)에 있다.
+
+- [ ] **1. persistent 적용** (4-14의 1): `C:\fresh-link\repos\infra`에서 `git checkout main`, `git pull` 뒤 `envs/dev/persistent`, `envs/prod/persistent` 순서로 `terraform apply`. 둘 다 "Plan: 5 to add"만 나와야 한다. 클러스터는 꺼져 있어도 된다.
+- [ ] **2. dev cluster 적용** (4-14의 2): dev-cluster 워크플로를 env `dev`, action `create`로 돌린다. 클러스터가 켜져 있는 평일 09:00~21:00에 하면 바로 들어간다. 꺼져 있으면 다음 생성 때 자동으로 들어가니 건너뛰어도 된다.
+- [ ] **3. gitops PR 합치기**: [gitops #6](https://github.com/sesac-freshlink/gitops/pull/6)(관측성 앱)을 합친다. 2가 끝난 뒤에 합쳐야 Loki가 버킷 이름과 Role을 받는다.
+- [ ] **4. 나머지 PR 합치기** (순서 상관없음, CI가 초록이고 CodeRabbit 요청이 남지 않았을 때):
+  - common [#14](https://github.com/sesac-freshlink/common/pull/14)
+  - gateway [#11](https://github.com/sesac-freshlink/gateway/pull/11)
+  - member-service [#15](https://github.com/sesac-freshlink/member-service/pull/15) (경우 레포)
+  - order-service [#25](https://github.com/sesac-freshlink/order-service/pull/25) (경우 레포)
+  - inventory-service [#24](https://github.com/sesac-freshlink/inventory-service/pull/24) (태우 레포, 이미 합쳐졌으면 건너뛴다)
+
+  서비스 PR이 합쳐지면 그 레포 CI가 새 이미지를 dev에 올리고, 그때부터 그 서비스의 추적(trace)이 Zipkin으로 간다.
+- [ ] **5. dev 확인** (4-14의 3·4): 5분 뒤 ArgoCD 앱 4개 Synced / Healthy, `observability` 파드 Running, 10분 뒤 Loki 버킷에 파일이 보이면 성공. 그다음 Grafana 대시보드·로그·Zipkin 화면을 본다(4-14의 4).
+- [ ] **6. 알리기**: 다 되면 관측성 스레드에 "dev 확인했어"라고 적는다. Claude가 common v0.3.0 배포와 prod 켜기를 이어서 한다.
+- [ ] **7. prod 켜기 (6 뒤, Claude가 이어서)**: gitops `argocd/apps/values.yaml`의 `observability.enabled.prod`를 `true`로 바꾸는 PR. prod 클러스터는 1에서 prod persistent를 적용한 뒤에만 만든다(안 하면 cluster 단계가 `loki_bucket_arn`이 없다며 실패한다).
+
+막히면 나온 메시지를 스레드에 그대로 붙여 넣는다. 다 끝나면 이 절을 지운다.
+
 ---
 
 ## 1. 무엇이 만들어지나
@@ -1229,6 +1250,20 @@ kubectl -n observability get pods
 aws s3 ls "s3://$(terraform "-chdir=envs/dev/persistent" output -raw loki_bucket)/" --recursive | Select-Object -First 3
 #   10분쯤 뒤 파일이 보이면 성공 (Loki가 로그 조각을 S3에 올렸다)
 ```
+
+**4) 화면 확인 (dev).** PowerShell 창 두 개를 열어 하나씩 친다. 다 보면 두 창 모두 Ctrl+C로 끝낸다.
+
+```powershell
+# 창 1: Grafana
+kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80
+# 창 2: Zipkin
+kubectl -n observability port-forward svc/zipkin 9411:9411
+#   두 창 모두 "Forwarding from 127.0.0.1:..."이 나오면 성공
+```
+
+1. 브라우저에서 http://localhost:3000 → **Dashboards** → 폴더 **FreshLink** → **FreshLink 서비스**. 서비스별 요청 수·지연·에러율·JVM 그래프가 보이면 성공.
+2. 같은 대시보드 로그 패널에 로그가 보이고, 위쪽 `search` 칸에 글자를 넣으면 그 줄만 걸러지면 성공.
+3. 로그 한 줄을 펼쳐 `traceId` 줄의 **Zipkin** 버튼을 누른다. gateway → 서비스 흐름이 보이면 성공. http://localhost:9411 에서 직접 찾아도 된다.
 
 Grafana·Zipkin 보는 방법과 할 일 16 완료 확인 순서는 `gitops/platform/observability/README.md` 5장에 있다. prod는 dev 확인 뒤 gitops `observability.enabled.prod`를 true로 바꾸면 같은 앱이 올라간다.
 
