@@ -12,9 +12,9 @@ locals {
   eks_cluster_name    = "${local.name_prefix}-eks"
   eks_node_group_name = "${local.name_prefix}-nodes"
 
-  # 켜는 일정은 두지 않는다. scheduler 모듈은 켜기 일정이 늘 있으므로 오지 않는 날(2199년)을 넣는다.
-  # EventBridge Scheduler cron의 연도는 1970~2199다.
-  never = "cron(0 0 1 1 ? 2199)"
+  # 켜는 일정은 두지 않는다. scheduler 모듈에 null을 넘기면 그 일정을 만들지 않는다.
+  # 오지 않는 날 cron(0 0 1 1 ? 2199)은 AWS가 "will never schedule an invocation"으로 거부한다.
+  never = null
 }
 
 module "network" {

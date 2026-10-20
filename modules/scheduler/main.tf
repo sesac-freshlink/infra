@@ -18,7 +18,7 @@ locals {
     })
   }
 
-  schedules = {
+  all_schedules = {
     rds-start              = { cron = var.start_cron, target = "rds:startDBInstance", input = local.rds_input, desc = "RDS 켜기" }
     rds-stop               = { cron = var.stop_cron, target = "rds:stopDBInstance", input = local.rds_input, desc = "RDS 끄기" }
     rds-safety-stop        = { cron = var.safety_stop_cron, target = "rds:stopDBInstance", input = local.rds_input, desc = "RDS 안전 끄기" }
@@ -29,6 +29,8 @@ locals {
     nodes-down             = { cron = var.nodes_down_cron, target = "eks:updateNodegroupConfig", input = local.node_input[0], desc = "노드 0대" }
     nodes-safety-down      = { cron = var.nodes_safety_down_cron, target = "eks:updateNodegroupConfig", input = local.node_input[0], desc = "노드 안전 0대" }
   }
+  # cron이 null인 일정은 만들지 않는다(예 prod는 켜기 일정이 없다). AWS는 오지 않는 날짜 cron(예 2199년)을 거부한다.
+  schedules = { for k, v in local.all_schedules : k => v if v.cron != null }
 }
 
 resource "aws_scheduler_schedule_group" "this" {
