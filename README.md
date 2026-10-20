@@ -72,7 +72,7 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 | 금 21:05 (+ 22:35 한 번 더) | 클러스터 묶음 삭제 | GitHub Actions |
 | 매일 23:00 / 23:05 | 안전 끄기: RDS·nano 중지·노드 0대 / NAT 삭제 | EventBridge Scheduler / GitHub Actions |
 
-GitHub Actions 예약은 정각을 피했다. GitHub가 붐비는 정각 예약을 늦추거나 건너뛰기 때문이다(2026-10-20 화 09:00 NAT 생성이 안 돎). NAT 생성과 클러스터 삭제는 한 번 더 돌고, 두 번째는 이미 끝났으면 바뀌는 것이 없다. 그래도 09:30에 dev `/api`가 503이면 수동 버튼 `nat-on`을 돌린다.
+GitHub Actions 예약은 정각을 피했다. GitHub가 붐비는 정각 예약을 늦추거나 건너뛰기 때문이다(2026-10-20 화 09:00 NAT 생성이 안 돎). NAT 생성과 클러스터 삭제는 한 번 더 돌고, 두 번째는 이미 끝났으면 바뀌는 것이 없다. GitHub는 예약을 몇 시간 늦게 돌리기도 해서(2026-10-19 21:10 NAT 삭제가 다음 날 03:41에 돎), 예약 실행은 한국 시각이 맞을 때만 한다: NAT 생성은 평일 08~20시, NAT 삭제는 21시~다음 날 08시, 클러스터 생성은 월 08~20시, 삭제는 금 21시부터 일요일까지. 그 밖에 늦게 온 예약은 건너뛰고 요약에 남긴다. 수동 버튼은 언제든 돈다. 그래도 09:30에 dev `/api`가 503이면 수동 버튼 `nat-on`을 돌린다.
 
 이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 

@@ -64,23 +64,46 @@ jobs:
             *)              action="${INPUT}" ;;
           esac
           [ -n "${action}" ] || { echo "할 일을 정하지 못했다"; exit 1; }
+
+          # GitHub는 예약 실행을 몇 시간씩 늦게 돌리기도 한다(2026-10-19 21:10 NAT 삭제가 다음 날 03:41에 돎).
+          # 늦게 온 예약이 낮에 NAT를 지우거나 밤에 NAT를 켜지 않게, 예약 실행은 한국 시각이 맞을 때만 한다.
+          # 수동 버튼(workflow_dispatch)은 언제든 그대로 돈다.
+          if [ -n "${SCHEDULE}" ]; then
+            dow=$(TZ=Asia/Seoul date +%u)    # 1=월 … 7=일
+            hour=$(TZ=Asia/Seoul date +%-H)
+            ok=false
+            case "${action}" in
+              create)  [ "$dow" = 1 ] && [ "$hour" -ge 8 ] && [ "$hour" -lt 20 ] && ok=true ;;              # 월 08~20시
+              nat-on)  [ "$dow" -le 5 ] && [ "$hour" -ge 8 ] && [ "$hour" -lt 20 ] && ok=true ;;            # 평일 08~20시
+              nat-off) { [ "$hour" -ge 21 ] || [ "$hour" -lt 8 ]; } && ok=true ;;                            # 21시~다음 날 08시
+              destroy) { { [ "$dow" = 5 ] && [ "$hour" -ge 21 ]; } || [ "$dow" -ge 6 ]; } && ok=true ;;       # 금 21시~일요일
+            esac
+            if [ "$ok" != true ]; then
+              echo "예약 ${action}이 너무 늦게 와서($(TZ=Asia/Seoul date '+%a %H:%M') 한국 시각) 건너뛴다" | tee -a "$GITHUB_STEP_SUMMARY"
+              action=skip
+            fi
+          fi
           echo "action=${action}" >> "$GITHUB_OUTPUT"
           echo "### dev-cluster: ${action}" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/checkout@v7
+        if: steps.what.outputs.action != 'skip'
 
       - uses: aws-actions/configure-aws-credentials@v6
+        if: steps.what.outputs.action != 'skip'
         with:
           role-to-assume: ${{ secrets.AWS_DEV_CLUSTER_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 7200
 
       - uses: hashicorp/setup-terraform@v4
+        if: steps.what.outputs.action != 'skip'
         with:
           terraform_version: 1.16.6
           terraform_wrapper: false
 
       - name: terraform init
+        if: steps.what.outputs.action != 'skip'
         run: |
           account=$(aws sts get-caller-identity --query Account --output text)
           # global/tfstate.tf와 같은 규칙: freshlink-tfstate-<계정 ID 끝 4자리>
@@ -90,6 +113,7 @@ jobs:
 
       - name: 클러스터가 있는지
         id: cluster
+        if: steps.what.outputs.action != 'skip'
         run: |
           if aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
