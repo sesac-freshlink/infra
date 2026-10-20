@@ -21,8 +21,8 @@ if (-not (Get-Command mysqlsh -ErrorAction SilentlyContinue)) {
 
 # 시드 SQL이 쓰는 칼럼. 표에 이 칼럼이 없거나, 이 밖의 NOT NULL·기본값 없는 칼럼이 있으면 멈춘다(V1과 어긋남)
 $expected = [ordered]@{
-    "member.store"      = @("id", "name", "address", "region", "status", "owner_member_id")
-    "member.member"     = @("id", "role", "email")
+    "member.store"      = @("id", "store_code", "name", "address", "region", "status", "owner_member_id", "created_at", "updated_at")
+    "member.member"     = @("id", "role", "email", "created_at", "updated_at")
     "inventory.product" = @("id", "product_code", "name", "category", "price")
 }
 $files = [ordered]@{
@@ -122,4 +122,4 @@ foreach ($p in $parts) {
 }
 
 Write-Host ""
-Write-Host "완료: member는 점포 1~3이 ACTIVE·점주 이메일과 함께, inventory는 product_count 30이 보이면 성공이다."
+Write-Host "완료: member는 점포 1~3이 S1~S3·ACTIVE·점주 이메일과 함께, inventory는 product_count 30이 보이면 성공이다."
