@@ -122,6 +122,14 @@ data "aws_iam_policy_document" "dev_access" {
     resources = ["${local.arn_prefix}:sqs:${local.region}:${local.account_id}:dev-*"]
   }
 
+  # aws eks update-kubeconfig가 dev 클러스터 주소·인증서를 읽는다. 클러스터 안 권한은 dev cluster 묶음의 access entry가 준다
+  # (observability 편집, freshlink 보기). prod 클러스터는 이름이 달라 여기 걸리지 않는다.
+  statement {
+    sid       = "DevEksDescribe"
+    actions   = ["eks:DescribeCluster"]
+    resources = ["${local.arn_prefix}:eks:${local.region}:${local.account_id}:cluster/freshlink-dev-eks"]
+  }
+
   statement {
     sid       = "DevSecretsRead"
     actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]

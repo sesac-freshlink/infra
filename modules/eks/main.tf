@@ -77,6 +77,37 @@ resource "aws_eks_access_policy_association" "admin" {
   }
 }
 
+# 팀원: 관리자 권한 없이 Grafana·Zipkin을 port-forward로 열고, 서비스 파드·로그를 본다(QA, 2026-10-27).
+# observability는 편집(port-forward에 pods/portforward가 필요하다), freshlink는 보기만. 다른 네임스페이스는 권한 없음.
+locals {
+  developer_access = merge([
+    for arn in var.developer_principal_arns : {
+      "${arn}|observability" = { principal_arn = arn, namespace = "observability", policy = "AmazonEKSEditPolicy" }
+      "${arn}|freshlink"     = { principal_arn = arn, namespace = "freshlink", policy = "AmazonEKSViewPolicy" }
+    }
+  ]...)
+}
+
+resource "aws_eks_access_entry" "developer" {
+  for_each = toset(var.developer_principal_arns)
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = each.value
+}
+
+resource "aws_eks_access_policy_association" "developer" {
+  for_each = local.developer_access
+
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = aws_eks_access_entry.developer[each.value.principal_arn].principal_arn
+  policy_arn    = "arn:${local.partition}:eks::aws:cluster-access-policy/${each.value.policy}"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = [each.value.namespace]
+  }
+}
+
 # IRSA: 파드가 ServiceAccount 토큰으로 IAM Role을 맡는다.
 resource "aws_iam_openid_connect_provider" "this" {
   url            = aws_eks_cluster.this.identity[0].oidc[0].issuer

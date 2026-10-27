@@ -1273,6 +1273,46 @@ kubectl -n observability port-forward svc/zipkin 9411:9411
 
 Grafana·Zipkin 보는 방법과 할 일 16 완료 확인 순서는 `gitops/platform/observability/README.md` 5장에 있다. prod는 dev 확인 뒤 gitops `observability.enabled.prod`를 true로 바꾸면 같은 앱이 올라간다.
 
+### 4-15. 팀원에게 dev Grafana·Zipkin 권한 주기 (QA, 김진아)
+
+QA에서 이태우·김경우가 Grafana·Zipkin을 직접 열 수 있게, dev 클러스터에 팀원 access entry를 넣는다. 관리자 권한은 주지 않는다.
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `global` | 팀원 정책 `freshlink-dev-access`에 `eks:DescribeCluster` (`freshlink-dev-eks`만). `aws eks update-kubeconfig`에 필요하다 |
+| `envs/dev/cluster` | access entry 2개(`freshlink-taewoo`, `freshlink-kyungwoo`)와 정책 연결 4개: `observability` 네임스페이스 `AmazonEKSEditPolicy`(port-forward), `freshlink` 네임스페이스 `AmazonEKSViewPolicy`(파드·로그 보기) |
+
+prod 클러스터는 바꾸지 않는다(`developer_principal_arns` 기본값이 빈 목록). 클러스터를 지웠다 만들어도 access entry는 Terraform이 다시 넣는다.
+
+**1) global 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+terraform "-chdir=global" apply
+#   "Plan: 0 to add, 1 to change, 0 to destroy."(aws_iam_policy.dev_access)를 보고 yes 입력. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다
+```
+
+**2) cluster 적용.** 클러스터가 켜져 있으면 지금, 꺼져 있으면 다음 생성 때 자동으로 들어간다.
+
+1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml → **Run workflow** → env `dev`, action `create` → **Run workflow**.
+2. 초록 체크로 끝나면 성공(이미 있는 클러스터에는 access entry 2개와 정책 연결 4개만 더해진다).
+
+**3) 확인 (팀원 PC에서, `freshlink-dev` 프로필).**
+
+```powershell
+winget install --id Kubernetes.kubectl -e --source winget   # 처음 한 번. 설치 뒤 PowerShell 창을 새로 연다
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2 --profile freshlink-dev
+kubectl -n freshlink get pods
+#   gateway·member·inventory·order·simulator 파드가 보이면 성공
+kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80
+#   "Forwarding from 127.0.0.1:3000"이 나오면 성공 → 브라우저 http://localhost:3000
+kubectl -n argocd get pods
+#   "Forbidden"이 나오면 맞다 (다른 네임스페이스는 권한이 없다)
+```
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |
@@ -1290,6 +1330,7 @@ Grafana·Zipkin 보는 방법과 할 일 16 완료 확인 순서는 `gitops/plat
 | Cognito User Pool·사용자·그룹 조회, 사용자 만들기·비밀번호·속성·그룹 넣기·지우기 (PC에서 member 점주 등록 시험용) | 태그 `Environment=dev`인 User Pool |
 | SSM 포트 포워딩 세션 시작·종료 | 태그 `Environment=dev`인 인스턴스. 셸 세션은 안 된다 |
 | CloudWatch Logs 읽기·Logs Insights | 이름에 `freshlink-dev-`가 들어간 로그 그룹 |
+| dev EKS: `update-kubeconfig`, `observability` 네임스페이스 편집(Grafana·Zipkin port-forward), `freshlink` 네임스페이스 보기(파드·로그) | 클러스터 `freshlink-dev-eks`만. 다른 네임스페이스·prod 클러스터는 안 된다 (4-15) |
 | 본인 비밀번호·액세스 키·MFA 기기 관리 | 본인 사용자만 |
 
 CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List*`)은 리소스 단위로 좁힐 수 없어 prod까지 보이게 되므로 주지 않았다. 지표와 로그는 dev Grafana로 본다. 이름과 태그 규칙은 [`envs/README.md`](envs/README.md)에 있다.
