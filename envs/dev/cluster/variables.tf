@@ -15,3 +15,9 @@ variable "admin_iam_users" {
   type        = list(string)
   default     = ["sesac-c2"]
 }
+
+variable "developer_iam_users" {
+  description = "Grafana·Zipkin port-forward와 서비스 파드 보기 권한을 줄 팀원 IAM 사용자 이름 (global의 freshlink-<아이디>)"
+  type        = list(string)
+  default     = ["freshlink-taewoo", "freshlink-kyungwoo"]
+}

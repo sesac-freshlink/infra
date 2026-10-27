@@ -78,6 +78,8 @@ module "eks" {
     [local.persistent.cluster_actions_role_arn],
     [for u in var.admin_iam_users : "arn:${local.partition}:iam::${local.account_id}:user/${u}"],
   )
+  # 팀원 사용자는 global에서 path /freshlink/로 만든다. access entry ARN에도 path가 들어가야 맞는다
+  developer_principal_arns = [for u in var.developer_iam_users : "arn:${local.partition}:iam::${local.account_id}:user/freshlink/${u}"]
 }
 
 # 노드·파드 → RDS 3306. 관리형 노드 그룹(시작 템플릿 없음)은 EKS 클러스터 보안 그룹을 쓴다.

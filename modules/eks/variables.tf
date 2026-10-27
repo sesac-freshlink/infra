@@ -28,6 +28,12 @@ variable "admin_principal_arns" {
   type        = list(string)
 }
 
+variable "developer_principal_arns" {
+  description = "팀원 IAM 사용자 ARN. observability 네임스페이스는 편집(Grafana·Zipkin port-forward), freshlink 네임스페이스는 보기만 준다. 비우면 만들지 않는다"
+  type        = list(string)
+  default     = []
+}
+
 variable "node_instance_type" {
   description = "노드 인스턴스 타입 (aws-리소스-계획.md 3장)"
   type        = string
