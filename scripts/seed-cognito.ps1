@@ -6,12 +6,13 @@
 # 실행(infra 폴더, $env:AWS_PROFILE = "freshlink-admin"):
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod   # prod 시연 계정 (admin·yeoksam·hapjeong·seongsu@freshlink.co.kr)
-#   ... -Env prod -SetAdminPassword   # 관리자 비밀번호를 외우기 쉬운 값으로 직접 정한다(화면에 묻는다. 명령 기록에 남지 않는다)
+#   ... -Env prod -SetAdminPassword -SetOwnerPassword   # 관리자·점주(3명 같은 값) 비밀번호를 외우기 쉬운 값으로 직접 정한다(화면에 묻는다. 명령 기록에 남지 않는다)
 param(
     [string]$Env = "dev",
     # dev는 예약 도메인(.test). prod는 시연 화면에 test가 보이지 않게 실제처럼 보이는 도메인을 쓴다. 메일은 보내지 않는다
     [string]$EmailDomain = $(if ($Env -eq "prod") { "freshlink.co.kr" } else { "freshlink.test" }),
-    [switch]$SetAdminPassword
+    [switch]$SetAdminPassword,
+    [switch]$SetOwnerPassword
 )
 $ErrorActionPreference = "Stop"
 
@@ -73,22 +74,25 @@ $accounts = @(
     [pscustomobject]@{ key = "owner3"; email = "$($ownerNames[2])@$EmailDomain"; group = "OWNER"; storeId = "3" }
 )
 
-# 관리자 비밀번호를 사람이 정한다(-SetAdminPassword). 규칙은 Cognito 정책과 같다: 8자 이상, 대·소문자·숫자·특수문자 각 1개 이상
-$adminPassword = $null
-if ($SetAdminPassword) {
-    $p1 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host "관리자 비밀번호" -AsSecureString)))
-    $p2 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host "한 번 더" -AsSecureString)))
-    if ($p1 -cne $p2) { throw "두 번 넣은 비밀번호가 다르다." }
+# 비밀번호를 사람이 정한다(-SetAdminPassword 관리자, -SetOwnerPassword 점주 3명 같은 값).
+# 규칙은 Cognito 정책과 같다: 8자 이상, 대·소문자·숫자·특수문자 각 1개 이상
+function Read-SeedPassword([string]$who) {
+    $p1 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host "$who 비밀번호" -AsSecureString)))
+    $p2 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host "$who 비밀번호 한 번 더" -AsSecureString)))
+    if ($p1 -cne $p2) { throw "두 번 넣은 $who 비밀번호가 다르다." }
     if ($p1.Length -lt 8 -or $p1 -cnotmatch "[A-Z]" -or $p1 -cnotmatch "[a-z]" -or $p1 -notmatch "[0-9]" -or $p1 -notmatch "[^A-Za-z0-9]") {
         throw "비밀번호 규칙: 8자 이상, 대문자·소문자·숫자·특수문자를 하나씩 넣는다."
     }
-    $adminPassword = $p1
+    return $p1
 }
+$adminPassword = if ($SetAdminPassword) { Read-SeedPassword "관리자" } else { $null }
+$ownerPassword = if ($SetOwnerPassword) { Read-SeedPassword "점주" } else { $null }
 
 $result = @()
 foreach ($a in $accounts) {
     $password = $previous[$a.email]
     if ($a.key -eq "admin" -and $adminPassword) { $password = $adminPassword }
+    if ($a.group -eq "OWNER" -and $ownerPassword) { $password = $ownerPassword }
     if (-not $password) { $password = New-SeedPassword }
 
     $attrs = @("Name=email,Value=$($a.email)", "Name=email_verified,Value=true")
