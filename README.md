@@ -1090,9 +1090,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1 -Env prod
 **5) prod Cognito 점주 시드 (할 일 15).** RDS가 필요 없다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod
-#   마지막 표에 admin@freshlink.test(ADMIN)과 yeoksam·hapjeong·seongsu@freshlink.test(OWNER, storeId 1·2·3) 네 줄이 나오면 성공
-#   prod 점주 이메일은 dev(owner1~3)와 다르게 시연 점포 이름에 맞췄다. 예전에 만든 prod owner1~3 계정은 비밀에서 빠지고 쓰지 않는다
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod -SetAdminPassword
+#   마지막 표에 admin@freshlink.co.kr(ADMIN)과 yeoksam·hapjeong·seongsu@freshlink.co.kr(OWNER, storeId 1·2·3) 네 줄이 나오면 성공
+#   prod는 시연 화면에 test가 보이지 않게 dev(owner1~3@freshlink.test)와 다른 실제 같은 이메일을 쓴다. 관리자 비밀번호를 외우기 쉽게 정하려면 -SetAdminPassword를 붙인다
 #   비밀번호는 dev와 다르다. 필요할 때 aws secretsmanager get-secret-value --secret-id freshlink-prod-seed-accounts --query SecretString --output text
 ```
 
@@ -1184,8 +1184,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env prod
 창 1에서 친다. 점주 계정(4-12의 5))을 먼저 맞춘 뒤 점포·상품을 넣는다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod
-#   yeoksam·hapjeong·seongsu@freshlink.test 세 점주와 admin 한 줄이 나오면 성공
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod -SetAdminPassword
+#   admin과 yeoksam·hapjeong·seongsu@freshlink.co.kr 세 점주가 나오면 성공
 powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -Env prod -LocalPort 3308
 #   점포 1·2·3이 프레시링크 역삼역점·합정점·성수점, ACTIVE, 위 점주 이메일로 나오고
 #   product_count 30, with_image 30이면 성공
