@@ -88,6 +88,18 @@ module "messaging" {
   developers = var.developers
 }
 
+# DLQ에 쪽지가 쌓이면 Discord DLQ 채널로 알린다. 웹훅 주소는 scripts/set-dlq-webhook.ps1 -Env prod로 넣는다(README 4-16).
+module "dlq_alert" {
+  source = "../../../modules/dlq-alert"
+
+  env         = local.env
+  name_prefix = local.name_prefix
+  dlq_names = [
+    module.messaging.queues["shared"].commands_dlq,
+    module.messaging.queues["shared"].results_dlq,
+  ]
+}
+
 module "frontend" {
   source = "../../../modules/frontend"
 

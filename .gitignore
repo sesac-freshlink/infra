@@ -31,5 +31,6 @@ backend.hcl
 # Cognito 가입 확인 Lambda zip (terraform이 만든다)
 modules/cognito/.build/
 modules/cost-report/.build/
+modules/dlq-alert/.build/
 modules/workflow-dispatch/.build/
 __pycache__/
