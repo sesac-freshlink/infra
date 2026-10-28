@@ -1091,7 +1091,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\set-toss-key.ps1 -Env prod
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod
-#   마지막 표에 admin@freshlink.test(ADMIN)과 owner1·owner2·owner3@freshlink.test(OWNER, storeId 1·2·3) 네 줄이 나오면 성공
+#   마지막 표에 admin@freshlink.test(ADMIN)과 yeoksam·hapjeong·seongsu@freshlink.test(OWNER, storeId 1·2·3) 네 줄이 나오면 성공
+#   prod 점주 이메일은 dev(owner1~3)와 다르게 시연 점포 이름에 맞췄다. 예전에 만든 prod owner1~3 계정은 비밀에서 빠지고 쓰지 않는다
 #   비밀번호는 dev와 다르다. 필요할 때 aws secretsmanager get-secret-value --secret-id freshlink-prod-seed-accounts --query SecretString --output text
 ```
 
@@ -1143,7 +1144,7 @@ flowchart LR
 - dev CI가 아직 도는 중에 합쳐서 멈췄으면, dev CI가 끝난 뒤 서비스 레포 Actions → ci → **Run workflow**(branch `main`)로 다시 승격한다.
 - prod 클러스터가 꺼져 있어도 gitops 커밋은 쌓인다. 켜면 ArgoCD가 마지막 태그로 맞춘다.
 - 프론트는 frontend 레포 `main`에 합치면 prod Cognito 값으로 빌드해서 prod 버킷에 올린다(4-12의 2)가 넣은 `PROD_*` Variables).
-- 기준 데이터는 점포(`member.store`)와 상품(`inventory.product`)만 옮긴다. 회원·주문·재고(로트·입고·예약·폐기·원장)는 옮기지 않는다. prod 재고는 prod 시뮬레이터 입고로 만든다.
+- 기준 데이터는 점포(`member.store`)와 상품(`inventory.product`)만 넣는다. dev DB를 복사하지 않고 prod 전용 시드 SQL(`scripts/seed/prod-member.sql`, `prod-inventory.sql`)로 넣는다. 시연 화면에 보이는 점포 이름·점주 이메일은 dev와 다르다. 회원·주문·재고(로트·입고·예약·폐기·원장)는 넣지 않는다. prod 재고는 prod 시뮬레이터 입고로 만든다.
 
 **1) 서비스 release.** 서비스 레포 5개(gateway, member-service, inventory-service, order-service, logistics-simulator)마다 한다. 각 레포의 `dev`에 "main push 승격" PR(ci.yml에 `main` 추가)이 먼저 합쳐져 있어야 한다.
 
@@ -1172,26 +1173,26 @@ kubectl -n freshlink get deploy -o custom-columns=NAME:.metadata.name,IMAGE:.spe
 #   이미지 끝 7자리가 1)의 prod 칸과 같으면 성공 (첫 release 완료 기준)
 ```
 
-**3) 기준 데이터 복사.** prod 서비스가 한 번 떠서 Flyway가 표를 만든 뒤에 한다. PowerShell 창 두 개에서 포트 포워딩을 연다(dev는 평일 09:00~21:00에만 켜져 있다).
+**3) 기준 데이터 넣기.** prod 서비스가 한 번 떠서 Flyway가 표를 만든 뒤에 한다. dev는 켜져 있지 않아도 된다. PowerShell 창 하나(창 2)에서 prod 포트 포워딩을 연다.
 
 ```powershell
 # 창 2
-powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env dev -LocalPort 3307
-# 창 3
 powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env prod -LocalPort 3308
-#   두 창 모두 "Waiting for connections..."가 나오면 성공
+#   "Waiting for connections..."가 나오면 성공
 ```
 
-창 1에서 친다. `mysqldump.exe`는 PC에 깔린 MySQL Server(`C:\Program Files\MySQL\MySQL Server 8.0\bin`)의 것을 저절로 찾는다.
+창 1에서 친다. 점주 계정(4-12의 5))을 먼저 맞춘 뒤 점포·상품을 넣는다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\copy-reference-data.ps1
-#   마지막 dev·prod 표의 stores·products가 같고, 점포 1·2·3이 ACTIVE·owner1·2·3 이메일로 나오면 성공
-#   "멈춤: prod에 표가 없다"면 2)의 member-service·inventory-service가 Healthy인지 먼저 본다
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod
+#   yeoksam·hapjeong·seongsu@freshlink.test 세 점주와 admin 한 줄이 나오면 성공
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -Env prod -LocalPort 3308
+#   점포 1·2·3이 프레시링크 역삼역점·합정점·성수점, ACTIVE, 위 점주 이메일로 나오고
+#   product_count 30, with_image 30이면 성공
+#   "멈춤: 시드 SQL과 prod DB 표가 맞지 않아"면 2)의 member-service·inventory-service가 Healthy인지 먼저 본다
 ```
 
-- 점포의 점주는 dev Cognito 사용자라 prod에서는 맞지 않는다. 스크립트가 넣은 뒤 prod에 없는 점주를 떼고(PENDING) 4-12의 5)에서 만든 prod 점주 owner1·2·3을 점포 1·2·3에 다시 잇는다. dev에서 시험으로 만든 다른 점포는 prod에서 PENDING으로 남는다.
-- 여러 번 돌려도 된다. prod에 이미 있는 점포·상품은 건드리지 않는다.
+- 여러 번 돌려도 된다. 이미 있는 점포·상품은 시드 값으로 맞춘다.
 
 **4) prod 재고 만들기.** 시뮬레이터 입고(dev 4-8과 같다).
 

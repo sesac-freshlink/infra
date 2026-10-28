@@ -1,12 +1,13 @@
-﻿# dev 시드 ①③④: 점포 3개 → 점주 member 행(Cognito sub) → 점주 연결·ACTIVE, 상품 30개.
+﻿# 시드 ①③④: 점포 3개 → 점주 member 행(Cognito sub) → 점주 연결·ACTIVE, 상품 30개.
 # 테이블은 각 서비스 Flyway(V1)가 만든다. 그 전에 돌리면 무엇이 없는지 알려 주고 아무것도 넣지 않는다.
-# 여러 번 돌려도 된다.
+# 여러 번 돌려도 된다. SQL은 환경마다 따로 있다: scripts\seed\<env>-member.sql, <env>-inventory.sql (prod는 dev 값을 복사하지 않는 시연용 값)
 #
 # 준비: 1) seed-cognito.ps1을 먼저 돌린다(member 행에 넣을 sub가 필요하다)
 #       2) 다른 PowerShell 창에서 scripts\db-port-forward.ps1이 'Waiting for connections...' 상태여야 한다
 # 실행(infra 폴더, $env:AWS_PROFILE = "freshlink-admin"):
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1                     # 둘 다
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -Part inventory     # 상품만 (member V1이 아직 없을 때)
+#   powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -Env prod -LocalPort 3308   # prod (seed-cognito.ps1 -Env prod를 먼저)
 param(
     [string]$Env = "dev",
     [int]$LocalPort = 3306,
@@ -27,9 +28,11 @@ $expected = [ordered]@{
     "member.member"     = @("id", "role", "email", "created_at", "updated_at")
     "inventory.product" = @("id", "product_code", "name", "category", "price")
 }
+# prod 시드는 상품 이미지 주소(inventory V5)도 넣는다. prod DB는 빈 채로 V5가 돌아 이미지가 비어 있기 때문이다
+if ($Env -eq "prod") { $expected["inventory.product"] += "image_url" }
 $files = [ordered]@{
-    member    = @{ tables = @("member.store", "member.member"); sql = "dev-member.sql" }
-    inventory = @{ tables = @("inventory.product"); sql = "dev-inventory.sql" }
+    member    = @{ tables = @("member.store", "member.member"); sql = "$Env-member.sql" }
+    inventory = @{ tables = @("inventory.product"); sql = "$Env-inventory.sql" }
 }
 $parts = if ($Part -eq "all") { @("member", "inventory") } else { @($Part) }
 
@@ -85,7 +88,7 @@ foreach ($line in $rows) {
 $problems = @()
 foreach ($t in $tables) {
     if (-not $columns.ContainsKey($t)) {
-        $problems += "표 $t 가 없다 (그 서비스 Flyway V1이 dev DB에 아직 안 돌았다)"
+        $problems += "표 $t 가 없다 (그 서비스 Flyway V1이 $Env DB에 아직 안 돌았다)"
         continue
     }
     foreach ($c in $expected[$t]) {
@@ -98,7 +101,7 @@ foreach ($t in $tables) {
     }
 }
 if ($problems.Count -gt 0) {
-    Write-Host "멈춤: 시드 SQL과 dev DB 표가 맞지 않아 아무것도 넣지 않았다." -ForegroundColor Yellow
+    Write-Host "멈춤: 시드 SQL과 $Env DB 표가 맞지 않아 아무것도 넣지 않았다." -ForegroundColor Yellow
     $problems | ForEach-Object { Write-Host " - $_" }
     Write-Host "이 목록을 스레드에 붙여 넣는다. 한쪽 표만 준비됐으면 -Part member 또는 -Part inventory 로 그쪽만 넣을 수 있다."
     exit 1
@@ -125,4 +128,4 @@ foreach ($p in $parts) {
 }
 
 Write-Host ""
-Write-Host "완료: member는 점포 1~3이 S1~S3·ACTIVE·점주 이메일과 함께, inventory는 product_count 30이 보이면 성공이다."
+Write-Host "완료: member는 점포 1~3이 S1~S3·ACTIVE·점주 이메일과 함께, inventory는 product_count 30이 보이면 성공이다(prod는 with_image도 30)."
