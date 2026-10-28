@@ -1314,6 +1314,83 @@ kubectl -n argocd get pods
 #   "Forbidden"이 나오면 맞다 (다른 네임스페이스는 권한이 없다)
 ```
 
+### 4-16. DLQ 알림(Discord)과 재처리 (김진아)
+
+재고 쪽지가 3번(`maxReceiveCount`) 받고도 처리되지 않으면 DLQ로 옮겨진다. DLQ에 쪽지가 1개라도 보이면 Discord **DLQ 채널**로 알림이 가고, DLQ를 비우면 "비었습니다" 알림이 한 번 더 간다. 배포 알림(GitHub 비밀 `DEPLOY_WEBHOOK_URL`)과는 다른 채널·다른 주소다. 이 알림은 GitHub Actions가 아니라 AWS 안(CloudWatch 경보 → SNS → Lambda)에서 나가서, 주소를 GitHub 비밀이 아니라 Secrets Manager에 넣는다.
+
+| 위치 | 생기는 것 (환경마다) |
+| --- | --- |
+| `envs/<env>/persistent` (`modules/dlq-alert`) | 비밀 `freshlink-<env>-dlq-webhook`(값 없음), CloudWatch 경보 2개(`<env>-inventory-commands-dlq.fifo-not-empty`, `<env>-inventory-results-dlq-not-empty`), SNS 주제·Lambda `freshlink-<env>-dlq-alert`, Lambda Role·로그 그룹 |
+
+경보는 공용 DLQ 2개에만 건다. 개발자별 DLQ(`dev-<아이디>-...`)는 각자 콘솔에서 본다.
+
+비용(월, dev·prod 합계): 경보 4개 0.40 USD + 비밀 2개 0.80 USD = 약 1.2 USD. SNS·Lambda는 알림이 올 때만 불려 무료 한도 안이다. 시간당 과금 리소스는 없다.
+
+**1) 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 10 to add, 0 to change, 0 to destroy."를 보고 yes. 다른 줄이 보이면 no 하고 스레드에 붙여 넣는다
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   같은 10개
+```
+
+**2) 웹훅 주소 넣기.** Discord DLQ 채널 → 채널 편집(톱니) → **연동** → **웹후크** → **새 웹후크** → **웹후크 URL 복사**. 그다음:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\set-dlq-webhook.ps1
+#   주소를 붙여 넣고 Enter (화면에 보이지 않는다). "완료"가 두 줄 나오고 Discord 채널에 시험 메시지가 오면 성공
+powershell -ExecutionPolicy Bypass -File .\scripts\set-dlq-webhook.ps1 -Env prod
+#   prod도 같은 채널로 받으려면 같은 주소를 넣는다. 메시지 머리에 [dev]·[prod]가 붙어 구분된다
+```
+
+**3) 경보 경로 시험 (선택).** 경보 상태를 잠깐 ALARM으로 바꿔 Lambda → Discord까지 오는지 본다. 다음 평가(5분 안)에 실제 값으로 돌아오며 "비었습니다" 알림이 한 번 더 온다.
+
+```powershell
+aws cloudwatch set-alarm-state --alarm-name dev-inventory-results-dlq-not-empty --state-value ALARM --state-reason "시험"
+#   1분 안에 Discord에 "[dev] DLQ에 쪽지가 쌓였습니다"가 오면 성공
+```
+
+**4) 알림이 왔을 때 재처리.** dev는 팀원 프로필(`freshlink-dev`)로도 된다(`dev-*` 큐에 보기·재처리·비우기 권한이 있다). prod는 `freshlink-admin`으로만 한다.
+
+```powershell
+$env:AWS_PROFILE = "freshlink-dev"         # prod면 "freshlink-admin"
+$dlqName = "dev-inventory-commands-dlq.fifo"   # 알림에 나온 큐 이름
+$dlq    = aws sqs get-queue-url --queue-name $dlqName --query QueueUrl --output text
+$dlqArn = aws sqs get-queue-attributes --queue-url $dlq --attribute-names QueueArn --query Attributes.QueueArn --output text
+
+# (1) 몇 개인지
+aws sqs get-queue-attributes --queue-url $dlq --attribute-names ApproximateNumberOfMessages
+
+# (2) 내용 보기 (지우지 않는다. 30초 뒤 다시 보인다)
+aws sqs receive-message --queue-url $dlq --max-number-of-messages 10 --visibility-timeout 30 --attribute-names All --message-attribute-names All
+```
+
+먼저 원인을 찾는다. 쪽지의 `messageId`·`storeId`로 Grafana 로그(4-14)를 검색해 리스너가 왜 실패했는지 본다. **원인을 고치기 전에 재처리하면 3번 더 실패하고 DLQ로 돌아온다.** 원인을 고쳐 배포한 뒤:
+
+```powershell
+# (3) 원래 큐로 되돌리기. 목적지를 적지 않으면 원래 큐(commands.fifo 또는 results)로 간다
+aws sqs start-message-move-task --source-arn $dlqArn
+
+# (4) 진행 상황. Status가 COMPLETED, ApproximateNumberOfMessagesMoved가 (1) 숫자면 끝
+aws sqs list-message-move-tasks --source-arn $dlqArn
+```
+
+서비스는 `processed_message`로 같은 쪽지를 두 번 처리하지 않으므로, 이미 처리된 쪽지가 섞여 다시 들어가도 재고가 두 번 바뀌지 않는다. 다시 보낼 필요가 없는 쪽지(시험 쪽지 등)라고 확인했을 때만 비운다. 비우면 되돌릴 수 없다.
+
+```powershell
+aws sqs purge-queue --queue-url $dlq      # 되돌릴 수 없다. 내용을 (2)로 기록한 뒤에만
+```
+
+콘솔로 하려면 SQS → 해당 DLQ → **DLQ 재드라이브 시작**을 누른다(팀원 계정은 큐 목록 권한이 없어 주소창에 큐 이름으로 바로 들어가야 할 수 있다).
+
+**설정값.** `maxReceiveCount` 3, 표시 제한 시간(visibility timeout) 30초, 본 큐 보관 4일, DLQ 보관 14일(`modules/messaging/variables.tf`). 리스너가 쪽지 하나를 30초 안에 끝내지 못하면 같은 쪽지가 다른 파드에 다시 보이고 3번째에 DLQ로 간다. 재고 쪽지 처리는 DB 트랜잭션 하나라 30초면 넉넉하다. 외부 호출을 넣어 처리가 길어지면 이 값을 처리 시간의 약 6배로 늘린다.
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |

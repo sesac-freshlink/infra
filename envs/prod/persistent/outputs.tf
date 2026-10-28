@@ -162,3 +162,8 @@ output "loki_bucket_arn" {
   description = "Loki 로그 버킷 ARN (cluster 묶음 Loki IRSA 정책)"
   value       = module.observability.loki_bucket_arn
 }
+
+output "dlq_webhook_secret_name" {
+  description = "Discord DLQ 채널 웹훅 주소를 넣을 비밀 이름 (scripts/set-dlq-webhook.ps1)"
+  value       = module.dlq_alert.webhook_secret_name
+}
