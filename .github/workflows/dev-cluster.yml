@@ -401,3 +401,14 @@ jobs:
             terraform -chdir=$ROOT force-unlock -force "$(echo "$lock" | jq -r .ID)"
             echo "이 작업이 남긴 state 잠금을 풀었다" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+      # 예약·수동 실행 모두 결과를 알린다(늦게 와서 건너뛴 예약은 '건너뜀'). prod-cluster.yml이 부를 때도 같다.
+      # 웹훅은 조직 비밀 DEPLOY_WEBHOOK_URL (.github actions/notify). 없으면 알림만 건너뛴다
+      - name: 결과 알림
+        if: always()
+        uses: sesac-freshlink/.github/actions/notify@main
+        with:
+          webhook-url: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          status: ${{ steps.what.outputs.action == 'skip' && 'skipped' || job.status }}
+          title: "${{ env.TARGET_ENV }} 클러스터 ${{ steps.what.outputs.action || inputs.action || 'schedule' }}"
+          details: ${{ steps.what.outputs.action == 'skip' && '예약이 늦게 와서 건너뛰었다' || '' }}
