@@ -1,10 +1,11 @@
-﻿# dev 시드 ②: Cognito 관리자 1·점주 3 계정을 만들고 자격(이메일·비밀번호·sub·storeId)을 Secrets Manager에 넣는다.
+﻿# 시드 ②: Cognito 관리자 1·점주 3 계정을 만들고 자격(이메일·비밀번호·sub·storeId)을 Secrets Manager에 넣는다.
 # 이메일 인증 완료·영구 비밀번호로 만든다(member M5·M6). 메일은 보내지 않는다(--message-action SUPPRESS).
 # 여러 번 돌려도 된다. 이미 있는 계정은 비밀번호·그룹·storeId만 비밀 값에 맞춘다.
 #
 # 준비: envs/<env>/persistent apply가 끝나 있어야 한다. RDS·포트 포워딩은 필요 없다.
 # 실행(infra 폴더, $env:AWS_PROFILE = "freshlink-admin"):
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1
+#   powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod   # prod 시연 계정 (점주 yeoksam·hapjeong·seongsu)
 param(
     [string]$Env = "dev",
     [string]$EmailDomain = "freshlink.test"   # 예약 도메인(.test). 메일을 보내지 않으므로 받을 수 없어도 된다
@@ -60,11 +61,13 @@ if ($r.Code -eq 0 -and $r.Out) {
     foreach ($a in ($r.Out | ConvertFrom-Json)) { $previous[$a.email] = $a.password }
 }
 
+# 점주 이메일 앞부분. prod는 dev 값을 쓰지 않고 시연 화면에 보이는 점포 이름(scripts\seed\prod-member.sql)에 맞춘다
+$ownerNames = if ($Env -eq "prod") { @("yeoksam", "hapjeong", "seongsu") } else { @("owner1", "owner2", "owner3") }
 $accounts = @(
     [pscustomobject]@{ key = "admin";  email = "admin@$EmailDomain";  group = "ADMIN"; storeId = $null }
-    [pscustomobject]@{ key = "owner1"; email = "owner1@$EmailDomain"; group = "OWNER"; storeId = "1" }
-    [pscustomobject]@{ key = "owner2"; email = "owner2@$EmailDomain"; group = "OWNER"; storeId = "2" }
-    [pscustomobject]@{ key = "owner3"; email = "owner3@$EmailDomain"; group = "OWNER"; storeId = "3" }
+    [pscustomobject]@{ key = "owner1"; email = "$($ownerNames[0])@$EmailDomain"; group = "OWNER"; storeId = "1" }
+    [pscustomobject]@{ key = "owner2"; email = "$($ownerNames[1])@$EmailDomain"; group = "OWNER"; storeId = "2" }
+    [pscustomobject]@{ key = "owner3"; email = "$($ownerNames[2])@$EmailDomain"; group = "OWNER"; storeId = "3" }
 )
 
 $result = @()
