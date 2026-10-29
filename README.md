@@ -1503,7 +1503,7 @@ aws cognito-idp admin-delete-user --user-pool-id $pool --username $new    # 시�
 
 1. https://console.cloud.google.com/ 에 로그인 → 위쪽 프로젝트 선택 → **새 프로젝트** → 이름 `freshlink` → **만들기**.
 2. 왼쪽 메뉴 **Google Auth Platform**(검색창에 "Google Auth Platform") → **시작하기**. 앱 이름 `FreshLink`, 사용자 지원 이메일은 본인 Gmail, 대상 **외부**, 연락처 이메일 본인 Gmail, 정책 동의 → **만들기**.
-3. **대상** → **앱 게시** → **확인**(프로덕션). `openid`·`email`·`profile`만 써서 구글 검토가 필요 없다. 게시하지 않으면 "테스트 사용자"에 넣은 계정만 로그인된다.
+3. **대상** → **테스트 사용자** → **사용자 추가** → 구글 로그인을 해 볼 Gmail(김진아·경우님·태우님, 시연 계정)을 넣고 **저장**. 앱은 "테스트" 상태로 둔다. 프로덕션 게시에는 홈페이지·개인정보처리방침 URL이 있어야 해서 도메인 할 일(Route 53)에서 `/privacy` 페이지와 함께 한다. 테스트 상태에서는 목록에 없는 계정이 "앱이 테스트 중" 화면에서 막힌다.
 4. **브랜딩** → **승인된 도메인**에 `amazoncognito.com`을 더하고 **저장**. (CloudFront 주소는 넣지 않는다. 구글이 돌려보내는 곳은 Cognito 도메인이다)
 5. **클라이언트** → **클라이언트 만들기** → 유형 **웹 애플리케이션**, 이름 `freshlink-dev`.
    - 승인된 JavaScript 원본: `https://freshlink-dev-auth.auth.ap-northeast-2.amazoncognito.com`
@@ -1575,7 +1575,7 @@ prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`
 | ExternalSecret `gateway-cognito`가 `SecretSyncedError` | 3의 클러스터 apply가 안 돼 External Secrets가 비밀을 못 읽는다 |
 | 구글 로그인 뒤 Cognito 화면에 `redirect_mismatch` | 구글 콘솔 리디렉션 URI가 `https://freshlink-<env>-auth.auth.ap-northeast-2.amazoncognito.com/oauth2/idpresponse`와 한 글자라도 다르다 |
 | 구글 화면에 "액세스 차단됨: 승인 오류" `Error 400: redirect_uri_mismatch` | 위와 같다 |
-| 구글 화면에 "앱이 테스트 중" | 5-3의 앱 게시를 안 했다 |
+| 구글 화면에 "앱이 테스트 중"이나 `access_denied` | 그 Gmail이 5-3의 테스트 사용자 목록에 없다 |
 | 5-8의 `/oauth2/token`이 `invalid_grant` | code를 5분 넘게 두었거나 두 번 썼다. 브라우저 로그인부터 다시 |
 | 5-8의 그룹에 `CUSTOMER`가 없다 | 구글 첫 로그인에 가입 확인 Lambda가 다른 출처로 불렸다. `/aws/lambda/freshlink-<env>-post-confirmation` 로그를 스레드에 붙여 넣는다 |
 

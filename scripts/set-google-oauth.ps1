@@ -37,8 +37,12 @@ try {
     [System.IO.File]::WriteAllText($tmp, $json)   # BOM 없이 저장 (aws CLI가 BOM을 값에 넣지 않게)
 
     # 없으면 만들고, 있으면 값만 바꾼다
+    # PowerShell 5.1은 Stop일 때 aws의 stderr(ResourceNotFound)를 오류로 멈춘다. 이 줄만 Continue로 부른다
+    $ErrorActionPreference = "Continue"
     $null = aws secretsmanager describe-secret --secret-id $secretId 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $exists = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = "Stop"
+    if ($exists) {
         aws secretsmanager put-secret-value --secret-id $secretId --secret-string "file://$tmp" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "put-secret-value 실패 ($secretId)" }
         Write-Host "완료: $secretId 값을 바꿨다. persistent apply를 다시 해야 Cognito 구글 IdP에 들어간다."
