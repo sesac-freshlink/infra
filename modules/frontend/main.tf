@@ -4,6 +4,7 @@
 # ALB는 클러스터 안의 컨트롤러가 만들어서 클러스터를 새로 만들 때마다 주소가 바뀐다. 그래서 /api 오리진 주소는
 # Terraform이 아니라 scripts/sync-api-origin.sh(켜고 끄기 워크플로의 create 단계)가 맞춘다. Terraform은 이 칸을 건드리지 않는다.
 # 도메인이 없어서 ACM 인증서는 쓰지 않고 CloudFront 기본 주소(https://<id>.cloudfront.net)를 쓴다.
+# 기본 동작(화면)에는 보안 헤더·CSP 응답 헤더 정책을 붙인다(README 4-18).
 
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
@@ -18,6 +19,21 @@ locals {
   # AWS 관리형 정책 ID (모든 계정 공통)
   cache_policy_caching_optimized = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized
   origin_request_all_viewer_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # AllViewerExceptHostHeader
+
+  # 화면이 실제로 부르는 곳만 연다. API·로그인(BFF)·알림 SSE는 같은 주소의 /api라 'self'로 된다.
+  # 구글 로그인은 Cognito 로그인 도메인으로 페이지를 옮기는 것(navigation)이라 CSP와 상관없다.
+  # 토스 결제위젯: SDK가 js.tosspayments.com 스크립트를 받고, 결제 수단·약관·결제창은 *.tosspayments.com iframe이다.
+  content_security_policy = join("; ", [
+    "default-src 'self'",
+    "script-src 'self' https://js.tosspayments.com",
+    join(" ", concat(["connect-src 'self' https://*.tosspayments.com"], var.csp_extra_connect_src)),
+    "frame-src https://*.tosspayments.com",
+    "img-src 'self' data: https:", # 상품 이미지가 외부 주소(NCP 등)라 https 전체
+    "style-src 'self' 'unsafe-inline'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+  ])
 }
 
 # ---------------------------------------------------------------- S3
@@ -123,6 +139,53 @@ resource "aws_cloudfront_cache_policy" "api" {
   }
 }
 
+# 화면(S3) 응답에 붙이는 보안 헤더. /api 응답에는 붙이지 않는다(gateway가 정한다).
+# CSP는 처음에 Report-Only로 건다: 막지 않고 브라우저 콘솔에 "막혔을 주소"만 찍는다. 확인 뒤 csp_report_only = false.
+resource "aws_cloudfront_response_headers_policy" "site" {
+  name    = "${var.name_prefix}-site-security"
+  comment = "HSTS, nosniff, DENY, referrer, CSP${var.csp_report_only ? " (report-only)" : ""}"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 31536000 # 1년
+      include_subdomains         = true
+      preload                    = false # 도메인을 사기 전이라 preload 목록에는 넣지 않는다
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+
+    dynamic "content_security_policy" {
+      for_each = var.csp_report_only ? [] : [1]
+      content {
+        content_security_policy = local.content_security_policy
+        override                = true
+      }
+    }
+  }
+
+  # Report-Only 헤더는 보안 헤더 칸에 없어서 사용자 지정 헤더로 넣는다
+  dynamic "custom_headers_config" {
+    for_each = var.csp_report_only ? [1] : []
+    content {
+      items {
+        header   = "Content-Security-Policy-Report-Only"
+        value    = local.content_security_policy
+        override = true
+      }
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   comment             = "${var.name_prefix}-frontend" # scripts/sync-api-origin.sh가 이 값으로 배포를 찾는다
@@ -153,12 +216,13 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   default_cache_behavior {
-    target_origin_id       = local.s3_origin_id
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    cache_policy_id        = local.cache_policy_caching_optimized
+    target_origin_id           = local.s3_origin_id
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = local.cache_policy_caching_optimized
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.site.id
 
     function_association {
       event_type   = "viewer-request"

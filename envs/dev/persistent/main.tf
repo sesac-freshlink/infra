@@ -112,6 +112,9 @@ module "frontend" {
   name_prefix   = local.name_prefix
   deploy_branch = "dev"
   force_destroy = true # dev는 빌드 파일만 있어서 지워도 된다
+
+  # dev 화면은 BFF로 바뀌어(10/29) 브라우저가 Cognito를 직접 부르지 않는다. CSP는 아직 Report-Only(README 4-18)
+  csp_report_only = true
 }
 
 module "observability" {
