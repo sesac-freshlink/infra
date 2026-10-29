@@ -1490,10 +1490,11 @@ aws cognito-idp revoke-token --client-id $bff.clientId --client-secret $bff.clie
 # (4) 서버 가입 = gateway POST /api/auth/signup·confirm. 받을 수 있는 메일 주소로 한다(Gmail이면 본인주소+bff1@gmail.com)
 $new   = Read-Host "시험 가입 메일 주소"
 $newPw = "Bff-test-" + (Get-Random -Minimum 10000 -Maximum 99999) + "!"
-aws cognito-idp sign-up --client-id $bff.clientId --secret-hash (Get-SecretHash $new) --username $new --password $newPw --user-attributes "Name=email,Value=$new" --query UserConfirmed
+# Windows PowerShell 5.1에서는 띄어 쓴 인자가 aws에 제대로 안 넘어가 "--username: expected one argument"가 나서 "--이름=값"으로 붙여 쓴다
+aws cognito-idp sign-up --client-id $bff.clientId "--secret-hash=$(Get-SecretHash $new)" "--username=$new" "--password=$newPw" --user-attributes "Name=email,Value=$new" --query UserConfirmed
 #   false가 나오고 메일(스팸함도)로 6자리 코드가 오면 성공
 $code = Read-Host "메일로 온 6자리"
-aws cognito-idp confirm-sign-up --client-id $bff.clientId --secret-hash (Get-SecretHash $new) --username $new --confirmation-code $code
+aws cognito-idp confirm-sign-up --client-id $bff.clientId "--secret-hash=$(Get-SecretHash $new)" "--username=$new" --confirmation-code $code
 aws cognito-idp admin-list-groups-for-user --user-pool-id $pool --username $new --query "Groups[].GroupName" --output text
 #   CUSTOMER가 나오면 성공 (가입 확인 Lambda가 PostConfirmation_ConfirmSignUp으로 불렸다)
 aws cognito-idp admin-delete-user --user-pool-id $pool --username $new    # 시험 계정 지우기
