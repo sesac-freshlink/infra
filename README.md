@@ -163,6 +163,8 @@ infra/
 - [x] 위 정책을 member-service IRSA Role `freshlink-<env>-member-service-irsa`에 붙이기 (EKS·IRSA를 만드는 클러스터 묶음, 할 일 7)
 - [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 반영
 - [x] 시드 스크립트 (E-12): `scripts/seed-cognito.ps1` 관리자 1·점주 3, `scripts/seed-db.ps1` 점포 3·점주 member 행·상품 30 (4-5)
+- [x] BFF(10/28): 서버용 앱 클라이언트 `freshlink-<env>-bff`(시크릿) + 비밀 `freshlink-<env>/gateway/cognito` + gateway IRSA(`AdminInitiateAuth`) + 로그인 도메인·구글 IdP (4-17)
+- [ ] BFF 전환하는 날: gateway `COGNITO_CLIENT_ID`를 bff로, 프론트 `VITE_COGNITO_*` 주입 지우기, `web` 클라이언트 지우기 (4-17 맨 아래)
 
 ## 4. 사용법
 
@@ -1390,6 +1392,192 @@ aws sqs purge-queue --queue-url $dlq      # 되돌릴 수 없다. 내용을 (2)�
 콘솔로 하려면 SQS → 해당 DLQ → **DLQ 재드라이브 시작**을 누른다(팀원 계정은 큐 목록 권한이 없어 주소창에 큐 이름으로 바로 들어가야 할 수 있다).
 
 **설정값.** `maxReceiveCount` 3, 표시 제한 시간(visibility timeout) 30초, 본 큐 보관 4일, DLQ 보관 14일(`modules/messaging/variables.tf`). 리스너가 쪽지 하나를 30초 안에 끝내지 못하면 같은 쪽지가 다른 파드에 다시 보이고 3번째에 DLQ로 간다. 재고 쪽지 처리는 DB 트랜잭션 하나라 30초면 넉넉하다. 외부 호출을 넣어 처리가 길어지면 이 값을 처리 시간의 약 6배로 늘린다.
+
+### 4-17. BFF 인프라와 구글 로그인 (10/28 결정, 김진아)
+
+gateway가 로그인·토큰 갱신을 대신 하고 토큰을 HttpOnly 쿠키에 두는 BFF로 바꾸기 위한 인프라다. gateway·프론트 로직은 경우님이 `.github` `docs/BFF-인수인계.md`를 보고 만든다. **gateway 토큰 검증 값(`COGNITO_CLIENT_ID`)은 아직 `web` 그대로다.** `bff`로 바꾸는 것은 경우님과 정한 전환하는 날 한다(맨 아래 "전환하는 날").
+
+| 위치 | 생기는 것 (환경마다) |
+| --- | --- |
+| `envs/<env>/persistent` (`modules/cognito`) | 앱 클라이언트 `freshlink-<env>-bff`(시크릿 있음, `ALLOW_ADMIN_USER_PASSWORD_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`, 토큰 기간·읽기 속성은 `web`과 같다, OAuth code 흐름), 비밀 `freshlink-<env>/gateway/cognito`(JSON `clientId`·`clientSecret`), 로그인 도메인 `freshlink-<env>-auth`, 구글 IdP(비밀 `freshlink-<env>-google-oauth`가 있을 때만) |
+| `envs/<env>/cluster` | IRSA Role `freshlink-<env>-gateway-irsa`(이 User Pool의 `cognito-idp:AdminInitiateAuth`만), External Secrets가 위 비밀을 읽는 권한, root 값(gateway IRSA ARN, `COGNITO_BFF_CLIENT_ID`·`COGNITO_DOMAIN_URL`·`FRONTEND_URL`) |
+| `global` | 팀원(dev)이 PC gateway로 BFF를 시험하도록 `freshlink-dev/*` 비밀 읽기와 dev User Pool `AdminInitiateAuth` |
+| gitops `envs/<env>/gateway` | `extraSecrets`: 위 비밀의 `clientSecret` → 환경 변수 `COGNITO_CLIENT_SECRET` |
+
+비용(월, dev·prod 합계): 비밀 4개 1.6 USD. 로그인 도메인·IdP·앱 클라이언트·IAM은 무료이고, 구글 로그인 사용자도 Lite 무료 한도(월 활성 1만 명) 안이다.
+
+`SignUp`·`ConfirmSignUp`·`RevokeToken`·`/oauth2/token`은 IAM 없이 클라이언트 시크릿으로 부르는 공개 API라 gateway IRSA에는 `AdminInitiateAuth`만 있다. `web` 클라이언트는 경우님이 프론트에서 Amplify를 다 뺄 때까지 그대로 둔다.
+
+**0) 준비.** `C:\fresh-link\repos\infra`에서 연 PowerShell. 이 PR과 gitops PR이 `main`에 합쳐져 있어야 한다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity --query Arn --output text    # ...:user/sesac-c2 가 나오면 성공
+```
+
+**1) global (팀원 권한).**
+
+```powershell
+terraform "-chdir=global" init "-backend-config=../backend.hcl"
+terraform "-chdir=global" apply
+#   "Plan: 0 to add, 1 to change, 0 to destroy." (freshlink-dev-access 정책)를 보고 yes
+```
+
+**2) dev persistent.** 구글 비밀이 아직 없으면 구글 IdP 없이 4개가 생긴다(구글은 5에서 더한다).
+
+```powershell
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 4 to add, 0 to change, 0 to destroy." (도메인, bff 클라이언트, 비밀, 비밀 값)를 보고 yes
+terraform "-chdir=envs/dev/persistent" output cognito_bff_client_id    # 26자 ID가 나오면 성공
+terraform "-chdir=envs/dev/persistent" output cognito_domain_url       # https://freshlink-dev-auth.auth.ap-northeast-2.amazoncognito.com
+```
+
+**3) dev 클러스터 + gitops.** 클러스터가 켜져 있는 평일 낮에 한다. 워크플로 `create`는 이미 있는 클러스터에 바뀐 것만 apply한다.
+
+1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml → **Run workflow** → action `create`, env `dev` → **Run workflow**. (PowerShell이면 `gh workflow run dev-cluster.yml --repo sesac-freshlink/infra -f action=create -f env=dev`)
+2. 끝나면 요약의 "클러스터 만들기" 단계 로그에 `3 added, 2 changed, 0 destroyed`(gateway Role·정책·연결, External Secrets 정책, root)가 보이면 성공.
+3. gitops PR(gateway `extraSecrets`)을 합친다. ArgoCD가 3분 안에 gateway를 다시 띄운다.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+kubectl -n freshlink get externalsecret gateway-cognito          # STATUS SecretSynced, READY True면 성공
+kubectl -n freshlink get sa gateway -o jsonpath="{.metadata.annotations}"   # freshlink-dev-gateway-irsa가 보이면 성공
+kubectl -n freshlink rollout status deploy/gateway                # successfully rolled out
+kubectl -n freshlink exec deploy/gateway -- sh -c 'echo ${#COGNITO_CLIENT_SECRET}'   # 0이 아닌 숫자(시크릿 길이)면 성공. 값은 찍지 않는다
+kubectl -n freshlink exec deploy/gateway -- sh -c 'echo $COGNITO_BFF_CLIENT_ID $COGNITO_DOMAIN_URL $FRONTEND_URL'
+```
+
+**4) bff 클라이언트 확인 (PowerShell, gateway가 할 일을 손으로).** 같은 창에서 친다. 시드 점주로 로그인해 ID 토큰의 `aud`가 bff 클라이언트 ID인지, 서버에서 가입해도 가입 확인 Lambda가 `CUSTOMER`에 넣는지 본다.
+
+```powershell
+$pool  = terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id
+$bff   = aws secretsmanager get-secret-value --secret-id freshlink-dev/gateway/cognito --query SecretString --output text | ConvertFrom-Json
+$seed  = aws secretsmanager get-secret-value --secret-id freshlink-dev-seed-accounts --query SecretString --output text | ConvertFrom-Json
+function Get-SecretHash($username) {
+    $h = New-Object System.Security.Cryptography.HMACSHA256
+    $h.Key = [Text.Encoding]::UTF8.GetBytes($bff.clientSecret)
+    [Convert]::ToBase64String($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($username + $bff.clientId)))
+}
+function Show-Jwt($t) {
+    $p = $t.Split('.')[1].Replace('-', '+').Replace('_', '/')
+    switch ($p.Length % 4) { 2 { $p += '==' } 3 { $p += '=' } }
+    [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json
+}
+
+# (1) 로그인 = gateway POST /api/auth/login
+$email = ($seed | Where-Object { $_.key -eq "owner1" }).email
+$pw    = ($seed | Where-Object { $_.key -eq "owner1" }).password
+@{ USERNAME = $email; PASSWORD = $pw; SECRET_HASH = (Get-SecretHash $email) } | ConvertTo-Json -Compress | Set-Content "$env:TEMP\auth.json" -Encoding ascii
+$r = aws cognito-idp admin-initiate-auth --user-pool-id $pool --client-id $bff.clientId --auth-flow ADMIN_USER_PASSWORD_AUTH --auth-parameters "file://$env:TEMP\auth.json" | ConvertFrom-Json
+Remove-Item "$env:TEMP\auth.json"
+$id = Show-Jwt $r.AuthenticationResult.IdToken
+$id.aud -eq $bff.clientId                      # True면 성공
+$id.'cognito:groups'; $id.'custom:storeId'      # OWNER, 1
+
+# (2) 갱신 = gateway POST /api/auth/refresh. SECRET_HASH의 사용자 이름은 이메일이 아니라 cognito:username(sub)이다
+@{ REFRESH_TOKEN = $r.AuthenticationResult.RefreshToken; SECRET_HASH = (Get-SecretHash $id.'cognito:username') } | ConvertTo-Json -Compress | Set-Content "$env:TEMP\auth.json" -Encoding ascii
+aws cognito-idp admin-initiate-auth --user-pool-id $pool --client-id $bff.clientId --auth-flow REFRESH_TOKEN_AUTH --auth-parameters "file://$env:TEMP\auth.json" --query "AuthenticationResult.ExpiresIn" --output text
+Remove-Item "$env:TEMP\auth.json"
+#   3600이 나오면 성공
+
+# (3) 로그아웃 = gateway POST /api/auth/logout (IAM 없이 시크릿만)
+aws cognito-idp revoke-token --client-id $bff.clientId --client-secret $bff.clientSecret --token $r.AuthenticationResult.RefreshToken
+#   아무것도 안 나오면 성공. 같은 리프레시 토큰으로 (2)를 다시 하면 NotAuthorizedException
+
+# (4) 서버 가입 = gateway POST /api/auth/signup·confirm. 받을 수 있는 메일 주소로 한다(Gmail이면 본인주소+bff1@gmail.com)
+$new   = Read-Host "시험 가입 메일 주소"
+$newPw = "Bff-test-" + (Get-Random -Minimum 10000 -Maximum 99999) + "!"
+aws cognito-idp sign-up --client-id $bff.clientId --secret-hash (Get-SecretHash $new) --username $new --password $newPw --user-attributes "Name=email,Value=$new" --query UserConfirmed
+#   false가 나오고 메일(스팸함도)로 6자리 코드가 오면 성공
+$code = Read-Host "메일로 온 6자리"
+aws cognito-idp confirm-sign-up --client-id $bff.clientId --secret-hash (Get-SecretHash $new) --username $new --confirmation-code $code
+aws cognito-idp admin-list-groups-for-user --user-pool-id $pool --username $new --query "Groups[].GroupName" --output text
+#   CUSTOMER가 나오면 성공 (가입 확인 Lambda가 PostConfirmation_ConfirmSignUp으로 불렸다)
+aws cognito-idp admin-delete-user --user-pool-id $pool --username $new    # 시험 계정 지우기
+```
+
+**5) 구글 로그인 (dev).** 구글 OAuth 클라이언트는 사람이 Google Cloud 콘솔에서 만든다(명령으로 만들 수 없다). dev·prod 두 개를 한 번에 만든다.
+
+1. https://console.cloud.google.com/ 에 로그인 → 위쪽 프로젝트 선택 → **새 프로젝트** → 이름 `freshlink` → **만들기**.
+2. 왼쪽 메뉴 **Google Auth Platform**(검색창에 "Google Auth Platform") → **시작하기**. 앱 이름 `FreshLink`, 사용자 지원 이메일은 본인 Gmail, 대상 **외부**, 연락처 이메일 본인 Gmail, 정책 동의 → **만들기**.
+3. **대상** → **앱 게시** → **확인**(프로덕션). `openid`·`email`·`profile`만 써서 구글 검토가 필요 없다. 게시하지 않으면 "테스트 사용자"에 넣은 계정만 로그인된다.
+4. **브랜딩** → **승인된 도메인**에 `amazoncognito.com`을 더하고 **저장**. (CloudFront 주소는 넣지 않는다. 구글이 돌려보내는 곳은 Cognito 도메인이다)
+5. **클라이언트** → **클라이언트 만들기** → 유형 **웹 애플리케이션**, 이름 `freshlink-dev`.
+   - 승인된 JavaScript 원본: `https://freshlink-dev-auth.auth.ap-northeast-2.amazoncognito.com`
+   - 승인된 리디렉션 URI: `https://freshlink-dev-auth.auth.ap-northeast-2.amazoncognito.com/oauth2/idpresponse`
+   - **만들기** → 뜨는 창의 **클라이언트 ID**와 **클라이언트 보안 비밀번호**를 메모장에 잠깐 둔다(보안 비밀번호는 이 창에서만 전부 보인다. 놓치면 클라이언트를 눌러 보안 비밀번호를 새로 더한다).
+6. 5를 한 번 더: 이름 `freshlink-prod`, 주소의 `dev`를 `prod`로(`https://freshlink-prod-auth.auth.ap-northeast-2.amazoncognito.com`, `.../oauth2/idpresponse`).
+7. PowerShell에서 dev 값을 넣고 다시 apply한다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\set-google-oauth.ps1
+#   클라이언트 ID 붙여 넣고 Enter, 보안 비밀번호 붙여 넣고 Enter(화면에 안 보인다). "완료: freshlink-dev-google-oauth 를 만들었다"면 성공
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 1 to add, 1 to change, 0 to destroy." (구글 IdP, bff 클라이언트에 Google 더하기)를 보고 yes
+terraform "-chdir=envs/dev/persistent" output cognito_google_login_enabled   # true
+```
+
+8. 브라우저로 구글 로그인을 끝까지 해 본다. 4)의 창에서 친다.
+
+```powershell
+$base   = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+$domain = terraform "-chdir=envs/dev/persistent" output -raw cognito_domain_url
+$redirect = "$base/api/auth/callback"
+Start-Process "$domain/oauth2/authorize?identity_provider=Google&client_id=$($bff.clientId)&response_type=code&scope=openid+email+profile&redirect_uri=$([uri]::EscapeDataString($redirect))"
+#   구글 계정을 고르면 브라우저가 <프론트>/api/auth/callback?code=... 로 온다. 화면은 gateway의 401·404 응답이어도 된다(경우님 코드가 아직 없다)
+#   주소창의 code= 뒤 값을 복사한다(5분 안에 쓴다)
+$code  = Read-Host "주소창의 code 값"
+$basic = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($bff.clientId):$($bff.clientSecret)"))
+$t = Invoke-RestMethod -Method Post -Uri "$domain/oauth2/token" -Headers @{ Authorization = "Basic $basic" } `
+    -ContentType "application/x-www-form-urlencoded" `
+    -Body @{ grant_type = "authorization_code"; client_id = $bff.clientId; code = $code; redirect_uri = $redirect }
+$g = Show-Jwt $t.id_token
+$g.aud -eq $bff.clientId        # True
+$g.'cognito:groups'              # CUSTOMER 와 <User Pool ID>_Google 두 개가 나오면 성공 (구글 첫 로그인에도 가입 확인 Lambda가 돈다)
+$g.email
+aws cognito-idp admin-delete-user --user-pool-id $pool --username $g.'cognito:username'   # 시험 계정 지우기
+```
+
+**6) CloudFront 쿠키 확인.** `/api/*`의 오리진 요청 정책이 AllViewerExceptHostHeader라 브라우저 쿠키가 모두 gateway로 가고, gateway 응답의 `Set-Cookie`도 그대로 브라우저로 온다. 캐시 정책 `freshlink-<env>-api`는 기본 TTL 0이라 쿠키가 붙은 응답이 캐시되지 않는다. 설정만 먼저 확인한다.
+
+```powershell
+aws cloudfront get-origin-request-policy --id b689b0a8-53d0-40ab-baf2-68738e2966ac --query "OriginRequestPolicy.OriginRequestPolicyConfig.CookiesConfig.CookieBehavior" --output text
+#   all 이면 성공
+```
+
+실제 쿠키 왕복은 경우님의 `/api/auth/login`이 dev에 올라온 날 인수인계 문서 7장 명령으로 확인한다(`Set-Cookie`가 오고, 다음 요청에 쿠키가 붙어 `/api/auth/me`가 200).
+
+**7) prod.** dev와 같은 순서다. prod 클러스터는 평소 없어서 클러스터 쪽(gateway IRSA, root 값)은 다음에 prod-cluster `create`를 돌릴 때 `main`에서 같이 들어간다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\set-google-oauth.ps1 -Env prod     # 5-6에서 만든 freshlink-prod 값
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   "Plan: 5 to add, 0 to change, 0 to destroy." (구글 비밀이 먼저 있어서 IdP까지 한 번에)를 보고 yes
+terraform "-chdir=envs/prod/persistent" output cognito_google_login_enabled   # true
+```
+
+prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`로 바꿔서 한다(구글 계정으로 만든 시험 사용자는 바로 지운다). prod에는 "test"가 들어간 데이터를 남기지 않는다.
+
+**전환하는 날 (경우님과).** 경우님 gateway BFF 코드가 dev에 올라가고 프론트가 `/api/auth/*`를 쓰게 되는 날:
+
+1. `envs/<env>/cluster/helm.tf`의 `COGNITO_CLIENT_ID`를 `local.persistent.cognito_bff_client_id`로 바꾸는 PR → dev-cluster `create`. 이때부터 `web` 클라이언트 토큰(Amplify)은 gateway가 401로 거절한다.
+2. 프론트 `frontend-deploy.yml`의 `VITE_COGNITO_USER_POOL_ID`·`VITE_COGNITO_CLIENT_ID` 주입과 레포 변수를 지운다.
+3. 며칠 문제없으면 `modules/cognito`의 `web` 클라이언트와 output `app_client_id`·`cognito_app_client_id`, root의 `COGNITO_BFF_CLIENT_ID`(→ `COGNITO_CLIENT_ID` 하나로)를 지운다.
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| persistent apply가 `InvalidParameterException: Domain already associated with another user pool` | 로그인 도메인 접두사가 다른 사람 것과 겹쳤다. `domain_prefix`를 바꾸고 구글 콘솔 주소도 같이 바꾼다 |
+| `admin-initiate-auth`가 `Unable to verify secret hash for client` | `SECRET_HASH`의 사용자 이름이 틀렸다. 로그인은 입력한 이메일, 갱신은 `cognito:username`(sub) |
+| ExternalSecret `gateway-cognito`가 `SecretSyncedError` | 3의 클러스터 apply가 안 돼 External Secrets가 비밀을 못 읽는다 |
+| 구글 로그인 뒤 Cognito 화면에 `redirect_mismatch` | 구글 콘솔 리디렉션 URI가 `https://freshlink-<env>-auth.auth.ap-northeast-2.amazoncognito.com/oauth2/idpresponse`와 한 글자라도 다르다 |
+| 구글 화면에 "액세스 차단됨: 승인 오류" `Error 400: redirect_uri_mismatch` | 위와 같다 |
+| 구글 화면에 "앱이 테스트 중" | 5-3의 앱 게시를 안 했다 |
+| 5-8의 `/oauth2/token`이 `invalid_grant` | code를 5분 넘게 두었거나 두 번 썼다. 브라우저 로그인부터 다시 |
+| 5-8의 그룹에 `CUSTOMER`가 없다 | 구글 첫 로그인에 가입 확인 Lambda가 다른 출처로 불렸다. `/aws/lambda/freshlink-<env>-post-confirmation` 로그를 스레드에 붙여 넣는다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

@@ -105,7 +105,7 @@ resource "helm_release" "argocd_root" {
     cluster = {
       imageRegistry = "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com"
       irsaRoleArns = {
-        for svc in ["member-service", "inventory-service", "order-service", "logistics-simulator"] :
+        for svc in ["gateway", "member-service", "inventory-service", "order-service", "logistics-simulator"] :
         svc => module.irsa.role_arns[svc]
       }
       env = {
@@ -113,6 +113,11 @@ resource "helm_release" "argocd_root" {
         COGNITO_ISSUER_URI   = local.persistent.cognito_issuer_uri    # gateway 토큰 iss 확인
         COGNITO_CLIENT_ID    = local.persistent.cognito_app_client_id # gateway 토큰 aud 확인
         COGNITO_USER_POOL_ID = local.persistent.cognito_user_pool_id  # member-service 점포 등록(AD-01)
+        # BFF(10/28). 전환하는 날 위 COGNITO_CLIENT_ID를 cognito_bff_client_id로 바꾸고(토큰 aud가 bff가 된다)
+        # 경우님이 프론트를 다 옮기면 web 클라이언트와 함께 아래 BFF 값을 정리한다. 시크릿은 ExternalSecret으로 따로 들어간다
+        COGNITO_BFF_CLIENT_ID = local.persistent.cognito_bff_client_id # gateway AdminInitiateAuth·SECRET_HASH
+        COGNITO_DOMAIN_URL    = local.persistent.cognito_domain_url    # gateway 구글 로그인 /oauth2/authorize·/oauth2/token
+        FRONTEND_URL          = local.persistent.frontend_url          # gateway 구글 콜백 redirect_uri(<주소>/api/auth/callback)·로그인 뒤 돌아갈 곳
       }
       # 관측성(할 일 16). gitops argocd/apps templates/observability.yaml의 loki Application이 쓴다
       observability = {

@@ -131,9 +131,13 @@ data "aws_iam_policy_document" "dev_access" {
   }
 
   statement {
-    sid       = "DevSecretsRead"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = ["${local.arn_prefix}:secretsmanager:${local.region}:${local.account_id}:secret:freshlink-dev-*"]
+    sid     = "DevSecretsRead"
+    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    resources = [
+      "${local.arn_prefix}:secretsmanager:${local.region}:${local.account_id}:secret:freshlink-dev-*",
+      # gateway bff 클라이언트 비밀(freshlink-dev/gateway/cognito). 경우님이 PC gateway로 BFF를 시험할 때 읽는다
+      "${local.arn_prefix}:secretsmanager:${local.region}:${local.account_id}:secret:freshlink-dev/*",
+    ]
   }
 
   statement {
@@ -168,6 +172,7 @@ data "aws_iam_policy_document" "dev_access" {
       "cognito-idp:AdminUpdateUserAttributes",
       "cognito-idp:AdminAddUserToGroup",
       "cognito-idp:AdminDeleteUser",
+      "cognito-idp:AdminInitiateAuth", # PC gateway BFF 로그인·갱신 시험 (클러스터 gateway IRSA와 같은 동작)
     ]
     resources = ["${local.arn_prefix}:cognito-idp:${local.region}:${local.account_id}:userpool/*"]
     condition {
