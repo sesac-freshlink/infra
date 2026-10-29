@@ -111,6 +111,10 @@ module "frontend" {
 
   name_prefix   = local.name_prefix
   deploy_branch = "main"
+
+  # prod 화면은 경우님 BFF 코드가 main에 나갈 때까지 Amplify가 Cognito를 직접 부른다. 그날 이 줄을 지우고 enforce로 바꾼다(README 4-18)
+  csp_report_only       = true
+  csp_extra_connect_src = ["https://cognito-idp.ap-northeast-2.amazonaws.com"]
 }
 
 # 할 일 16: Loki 로그 버킷(S3, 14일). prod 로그는 지우지 않게 force_destroy를 켜지 않는다

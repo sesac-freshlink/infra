@@ -165,6 +165,7 @@ infra/
 - [x] 시드 스크립트 (E-12): `scripts/seed-cognito.ps1` 관리자 1·점주 3, `scripts/seed-db.ps1` 점포 3·점주 member 행·상품 30 (4-5)
 - [x] BFF(10/28): 서버용 앱 클라이언트 `freshlink-<env>-bff`(시크릿) + 비밀 `freshlink-<env>/gateway/cognito` + gateway IRSA(`AdminInitiateAuth`) + 로그인 도메인·구글 IdP (4-17)
 - [ ] BFF 전환하는 날: gateway `COGNITO_CLIENT_ID`를 bff로, 프론트 `VITE_COGNITO_*` 주입 지우기, `web` 클라이언트 지우기 (4-17 맨 아래)
+- [ ] CloudFront 보안 헤더·CSP (4-18): Report-Only로 걸고 dev 확인 → enforce. prod는 BFF가 `main`에 나갈 때 Cognito 주소를 빼고 enforce
 
 ## 4. 사용법
 
@@ -1579,6 +1580,80 @@ prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`
 | 구글 화면에 "앱이 테스트 중"이나 `access_denied` | 그 Gmail이 5-3의 테스트 사용자 목록에 없다 |
 | 5-8의 `/oauth2/token`이 `invalid_grant` | code를 5분 넘게 두었거나 두 번 썼다. 브라우저 로그인부터 다시 |
 | 5-8의 그룹에 `CUSTOMER`가 없다 | 구글 첫 로그인에 가입 확인 Lambda가 다른 출처로 불렸다. `/aws/lambda/freshlink-<env>-post-confirmation` 로그를 스레드에 붙여 넣는다 |
+
+### 4-18. CloudFront 보안 헤더와 CSP (멘토링 후 할 일, 김진아)
+
+화면(S3) 응답에 응답 헤더 정책 `freshlink-<env>-site-security`를 붙인다. `/api/*` 응답에는 붙이지 않는다.
+
+| 헤더 | 값 |
+| --- | --- |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Content-Security-Policy-Report-Only` (`csp_report_only = false`면 `Content-Security-Policy`) | 아래 |
+
+```text
+default-src 'self'; script-src 'self' https://js.tosspayments.com; connect-src 'self' https://*.tosspayments.com [+ csp_extra_connect_src];
+frame-src https://*.tosspayments.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+```
+
+- dev: 화면이 BFF라(10/29) 브라우저가 Cognito를 부르지 않는다. API·로그인·알림 SSE는 모두 같은 주소의 `/api`라 `'self'`로 된다.
+- prod: 경우님 BFF 코드가 `main`에 나갈 때까지 Amplify가 `https://cognito-idp.ap-northeast-2.amazonaws.com`을 직접 부르므로 `csp_extra_connect_src`에 넣어 두었다.
+- 구글 로그인은 `freshlink-<env>-auth.auth.ap-northeast-2.amazoncognito.com`으로 **페이지를 옮기는 것**이라 CSP에 넣지 않아도 된다.
+- 지도 API·S3 이미지 버킷처럼 새로 부르는 곳이 생기면 `modules/frontend/main.tf`의 `local.content_security_policy`에 더한다.
+
+**1) dev에 Report-Only로 걸기.** `C:\fresh-link\repos\infra`에서 연 PowerShell. 이 PR이 `main`에 합쳐져 있어야 한다. 클러스터는 꺼져 있어도 된다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 1 to add, 1 to change, 0 to destroy." (응답 헤더 정책 추가, CloudFront 배포 기본 동작 변경)를 보고 yes
+```
+
+**2) 헤더 확인.** CloudFront 배포가 바뀌는 데 몇 분 걸린다. 캐시를 지울 필요는 없다(헤더는 캐시 뒤에 붙는다).
+
+```powershell
+$base = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+curl.exe -sI "$base/" | Select-String "strict-transport|x-content-type|x-frame|referrer-policy|content-security"
+#   다섯 줄이 나오고 마지막이 content-security-policy-report-only: default-src 'self'; ... 이면 성공
+```
+
+**3) 브라우저 확인.** 크롬에서 `$base`를 열고 F12 → Console. Report-Only라 막지는 않고, 막혔을 곳만 `[Report Only] Refused to ...`로 빨갛게 찍힌다. 아래 화면을 지나가면서 이 줄이 하나도 없으면 된다.
+
+| 화면 | 언제 볼 수 있나 |
+| --- | --- |
+| 첫 화면, 로그인 화면 | 지금 |
+| 상품 목록(이미지) | dev 클러스터가 켜져 있고 로그인이 될 때 |
+| 이메일 로그인·구글 로그인·로그아웃 | 경우님 BFF 화면이 dev에 올라온 뒤 (지금 dev 화면은 가짜 로그인) |
+| 주문 → 토스 결제위젯 → [결제하기] 결제창 → 성공 화면 | 위와 같다 |
+| 알림(SSE) | notification-service가 dev에 올라온 뒤 |
+
+`Refused to ...` 줄이 나오면 그 줄의 주소와 지시어(`connect-src` 등)를 스레드에 붙여 넣는다. `local.content_security_policy`에 더하는 PR을 만든다.
+
+**4) dev 실제로 막기.** 3)의 표가 모두 끝나면 `envs/dev/persistent/main.tf`의 `csp_report_only = true`를 `false`로 바꾸는 PR → 합친 뒤 1)과 같은 apply("Plan: 0 to add, 1 to change") → 2)에서 마지막 줄이 `content-security-policy:`로 바뀌면 성공. 3)의 화면을 한 번 더 지나가며 `Refused to ...`(이제 진짜로 막힌 것)가 없는지 본다.
+
+**5) prod.** 지금 걸어도 Report-Only라 화면에 영향이 없다. prod 클러스터가 꺼져 있어도 된다.
+
+```powershell
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   "Plan: 1 to add, 1 to change, 0 to destroy."를 보고 yes
+$base = terraform "-chdir=envs/prod/persistent" output -raw frontend_url
+curl.exe -sI "$base/" | Select-String "content-security"
+#   connect-src 에 https://cognito-idp.ap-northeast-2.amazonaws.com 이 들어 있으면 성공
+```
+
+BFF가 `main`에 나간 날(4-17 "전환하는 날"의 prod) `envs/prod/persistent/main.tf`에서 `csp_extra_connect_src` 줄을 지우고 `csp_report_only = false`로 바꾸는 PR을 같이 합치고 apply한다.
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| apply가 `TooManyResponseHeadersPolicies` | 계정당 응답 헤더 정책 한도(20)에 걸렸다. 콘솔 CloudFront → Policies → Response headers에서 안 쓰는 정책을 지운다 |
+| 2)에 헤더가 안 나온다 | 배포가 아직 `InProgress`다. `aws cloudfront get-distribution --id (terraform "-chdir=envs/dev/persistent" output -raw frontend_distribution_id) --query Distribution.Status`가 `Deployed`가 된 뒤 다시 본다 |
+| enforce 뒤 결제위젯 자리가 비어 있다 | 콘솔에 `Refused to load the script` / `frame`이 찍혀 있다. 그 주소를 `script-src`·`frame-src`에 더하고, 급하면 `csp_report_only = true`로 되돌려 apply한다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
