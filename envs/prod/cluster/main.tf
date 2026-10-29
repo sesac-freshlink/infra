@@ -91,8 +91,18 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_eks" {
 }
 
 # ---------------------------------------------------------------------------
-# IRSA Role: 서비스 4개(gateway는 AWS를 부르지 않아 없음) + 클러스터 부품 3개 + Loki
+# IRSA Role: 서비스 5개 + 클러스터 부품 3개 + Loki
 # ---------------------------------------------------------------------------
+# gateway BFF(10/28): 로그인·토큰 갱신(AdminInitiateAuth)만 이 User Pool에. SignUp·ConfirmSignUp·RevokeToken·/oauth2/token은
+# IAM이 필요 없는 공개 API라 bff 클라이언트 시크릿(ExternalSecret)만 있으면 된다.
+data "aws_iam_policy_document" "gateway" {
+  statement {
+    sid       = "BffLoginInThisPool"
+    actions   = ["cognito-idp:AdminInitiateAuth"]
+    resources = [local.persistent.cognito_user_pool_arn]
+  }
+}
+
 data "aws_iam_policy_document" "inventory_service" {
   statement {
     sid       = "ConsumeCommands"
@@ -127,7 +137,7 @@ data "aws_iam_policy_document" "logistics_simulator" {
   }
 }
 
-# External Secrets Operator: 앱 DB 비밀 3개와 토스 키만 읽는다(시드 계정 비밀은 읽지 않는다).
+# External Secrets Operator: 앱 DB 비밀 3개, 토스 키, gateway bff 클라이언트 비밀만 읽는다(시드 계정 비밀은 읽지 않는다).
 data "aws_iam_policy_document" "external_secrets" {
   statement {
     sid     = "ReadAppSecrets"
@@ -136,6 +146,7 @@ data "aws_iam_policy_document" "external_secrets" {
       values(local.persistent.app_db_secret_arns),
       # 비밀 ARN 끝에 무작위 6자리가 붙는다
       ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.persistent.toss_secret_name}-??????"],
+      [local.persistent.cognito_gateway_secret_arn], # gateway bff 클라이언트 ID·시크릿
     )
   }
 }
@@ -162,6 +173,11 @@ module "irsa" {
   oidc_issuer       = module.eks.oidc_issuer
 
   roles = {
+    gateway = {
+      namespace       = local.app_namespace
+      service_account = "gateway"
+      policy_json     = data.aws_iam_policy_document.gateway.json
+    }
     member-service = {
       namespace       = local.app_namespace
       service_account = "member-service"

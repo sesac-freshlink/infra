@@ -88,6 +88,36 @@ output "cognito_app_client_id" {
   value       = module.cognito.app_client_id
 }
 
+output "cognito_user_pool_arn" {
+  description = "prod User Pool ARN (gateway IRSA AdminInitiateAuth 범위)"
+  value       = module.cognito.user_pool_arn
+}
+
+output "cognito_bff_client_id" {
+  description = "prod gateway BFF 앱 클라이언트 ID. 시크릿은 비밀 cognito_gateway_secret_name에만 있다"
+  value       = module.cognito.bff_client_id
+}
+
+output "cognito_gateway_secret_name" {
+  description = "prod bff 클라이언트 ID·시크릿 비밀 이름 (gitops envs/prod/gateway extraSecrets)"
+  value       = module.cognito.gateway_cognito_secret_name
+}
+
+output "cognito_gateway_secret_arn" {
+  description = "prod bff 클라이언트 비밀 ARN (클러스터 묶음 External Secrets 읽기 권한)"
+  value       = module.cognito.gateway_cognito_secret_arn
+}
+
+output "cognito_domain_url" {
+  description = "prod 로그인 도메인 주소 (구글 로그인 /oauth2/authorize·/oauth2/token)"
+  value       = module.cognito.domain_url
+}
+
+output "cognito_google_login_enabled" {
+  description = "prod 구글 IdP를 만들었는지"
+  value       = module.cognito.google_login_enabled
+}
+
 output "cognito_issuer_uri" {
   description = "prod JWT 발급자 주소 (gateway issuer-uri)"
   value       = module.cognito.issuer_uri

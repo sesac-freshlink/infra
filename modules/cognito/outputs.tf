@@ -14,7 +14,7 @@ output "user_pool_name" {
 }
 
 output "app_client_id" {
-  description = "브라우저용 앱 클라이언트 ID (gateway aud 확인, frontend VITE_COGNITO_CLIENT_ID)"
+  description = "브라우저용 앱 클라이언트 ID (gateway aud 확인, frontend VITE_COGNITO_CLIENT_ID). BFF 전환 뒤 지운다"
   value       = aws_cognito_user_pool_client.web.id
 }
 
@@ -46,4 +46,29 @@ output "member_cognito_policy_arn" {
 output "seed_accounts_secret_name" {
   description = "시드 계정 자격 비밀 이름"
   value       = aws_secretsmanager_secret.seed_accounts.name
+}
+
+output "bff_client_id" {
+  description = "gateway BFF용 앱 클라이언트 ID. 전환하는 날부터 토큰 aud가 이 값이다. 시크릿은 output에 내보내지 않는다"
+  value       = aws_cognito_user_pool_client.bff.id
+}
+
+output "gateway_cognito_secret_name" {
+  description = "bff 클라이언트 ID·시크릿 비밀 이름 (gitops gateway extraSecrets)"
+  value       = aws_secretsmanager_secret.gateway_cognito.name
+}
+
+output "gateway_cognito_secret_arn" {
+  description = "bff 클라이언트 비밀 ARN (클러스터 묶음 External Secrets 읽기 권한)"
+  value       = aws_secretsmanager_secret.gateway_cognito.arn
+}
+
+output "domain_url" {
+  description = "로그인 도메인 주소. 구글 로그인 /oauth2/authorize, /oauth2/token, /logout"
+  value       = "https://${aws_cognito_user_pool_domain.this.domain}.auth.${data.aws_region.current.region}.amazoncognito.com"
+}
+
+output "google_login_enabled" {
+  description = "구글 IdP를 만들었는지"
+  value       = length(aws_cognito_identity_provider.google) > 0
 }

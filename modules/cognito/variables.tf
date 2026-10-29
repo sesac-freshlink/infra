@@ -54,3 +54,24 @@ variable "admin_password_auth" {
   type        = bool
   default     = false
 }
+
+variable "domain_prefix" {
+  description = "로그인 도메인 접두사(리전 안에서 전 세계 유일, aws·amazon·cognito 금지). 예 freshlink-dev-auth"
+  type        = string
+}
+
+variable "callback_urls" {
+  description = "bff 클라이언트 OAuth 콜백 주소(gateway /api/auth/callback). 예 https://<프론트>/api/auth/callback"
+  type        = list(string)
+}
+
+variable "logout_urls" {
+  description = "bff 클라이언트 로그아웃 후 돌아갈 주소(로그인 도메인 /logout의 logout_uri)"
+  type        = list(string)
+}
+
+variable "google_secret_name" {
+  description = "구글 OAuth 클라이언트 비밀 이름(JSON clientId·clientSecret, scripts/set-google-oauth.ps1이 넣는다). 비밀이 없거나 null이면 구글 로그인 없음"
+  type        = string
+  default     = null
+}

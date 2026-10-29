@@ -79,6 +79,12 @@ module "cognito" {
   source = "../../../modules/cognito"
 
   name_prefix = local.name_prefix
+
+  # BFF·구글 로그인(README 4-17). 콜백은 gateway /api/auth/callback
+  domain_prefix      = "${local.name_prefix}-auth"
+  callback_urls      = ["${module.frontend.url}/api/auth/callback"]
+  logout_urls        = ["${module.frontend.url}/login"]
+  google_secret_name = "${local.name_prefix}-google-oauth" # scripts/set-google-oauth.ps1 -Env prod가 만든다. 없으면 구글 IdP 없이 만든다
 }
 
 module "messaging" {

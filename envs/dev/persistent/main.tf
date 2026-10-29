@@ -1,5 +1,6 @@
 # dev 유지 묶음 (할 일 3): 네트워크, RDS + SSM 접속용 nano + 앱 DB 비밀, 켜고 끄기 일정, SQS, 토스 키 비밀.
 # 할 일 6: Cognito User Pool + 가입 확인 Lambda + member Cognito 관리자 정책 + 시드 계정 비밀.
+#   BFF(10/28): gateway용 bff 클라이언트 + 그 시크릿 비밀 + 로그인 도메인 + 구글 IdP.
 # 할 일 7: 노드 그룹 일정(평일), 켜고 끄기 워크플로가 맡는 GitHub Actions Role, 클러스터·노드 그룹 이름.
 # 할 일 13: 프론트 S3 + CloudFront(/api/* → gateway ALB) + frontend 레포 배포 Role.
 # 할 일 16: Loki 로그 버킷(S3, 14일). 클러스터를 지워도 로그가 남는다.
@@ -76,6 +77,12 @@ module "cognito" {
   name_prefix                 = local.name_prefix
   secret_recovery_window_days = 0    # dev는 지우고 다시 만들 때 이름이 바로 비게
   admin_password_auth         = true # gateway 401·403 시험 토큰을 PowerShell로 받는다(README 4-7)
+
+  # BFF·구글 로그인(README 4-17). 콜백은 gateway /api/auth/callback. dev는 경우님 PC(Vite 5173 → 로컬 gateway)도 받는다
+  domain_prefix      = "${local.name_prefix}-auth"
+  callback_urls      = ["${module.frontend.url}/api/auth/callback", "http://localhost:5173/api/auth/callback"]
+  logout_urls        = ["${module.frontend.url}/login", "http://localhost:5173/login"]
+  google_secret_name = "${local.name_prefix}-google-oauth" # scripts/set-google-oauth.ps1이 만든다. 없으면 구글 IdP 없이 만든다
 }
 
 module "messaging" {
