@@ -106,7 +106,7 @@ module "messaging" {
 }
 
 # DLQ에 쪽지가 쌓이면 Discord DLQ 채널로 알린다. 웹훅 주소는 scripts/set-dlq-webhook.ps1로 넣는다(README 4-16).
-# 경보는 공용 DLQ 2개만(경보 1개 월 0.10 USD). 개발자별 DLQ는 각자 콘솔에서 본다.
+# 경보는 공용 DLQ 3개만(경보 1개 월 0.10 USD). 개발자별 DLQ는 각자 콘솔에서 본다.
 module "dlq_alert" {
   source = "../../../modules/dlq-alert"
 
@@ -115,6 +115,7 @@ module "dlq_alert" {
   dlq_names = [
     module.messaging.queues["shared"].commands_dlq,
     module.messaging.queues["shared"].results_dlq,
+    module.messaging.queues["shared"].notifications_dlq, # 화면 알림(10/30)
   ]
   secret_recovery_window_days = 0 # dev는 지우고 다시 만들 때 이름이 바로 비게
 }

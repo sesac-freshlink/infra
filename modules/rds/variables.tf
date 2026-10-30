@@ -72,14 +72,15 @@ variable "app_databases" {
     username = string
   }))
   default = {
-    member    = { schema = "member", username = "member_app" }
-    inventory = { schema = "inventory", username = "inventory_app" }
-    order     = { schema = "orders", username = "order_app" }
+    member       = { schema = "member", username = "member_app" }
+    inventory    = { schema = "inventory", username = "inventory_app" }
+    order        = { schema = "orders", username = "order_app" }
+    notification = { schema = "notification", username = "notification_app" } # 화면 알림(10/30)
   }
 }
 
 variable "app_password_version" {
-  description = "앱 DB 비밀번호 버전. 올리면 비밀번호 3개를 새로 만들어 비밀에 넣는다(그 뒤 DB 사용자 SQL을 다시 돌린다)"
+  description = "앱 DB 비밀번호 버전. 올리면 서비스 비밀번호를 모두 새로 만들어 비밀에 넣는다(그 뒤 DB 사용자 SQL을 다시 돌린다)"
   type        = number
   default     = 1
 }

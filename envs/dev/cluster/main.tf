@@ -15,9 +15,10 @@ locals {
   persistent = data.terraform_remote_state.persistent.outputs
 
   # 큐 세트 "shared"(dev-)만 클러스터 파드가 쓴다. 개발자별 큐는 각자 PC에서 IAM 사용자로 쓴다.
-  # 순서: [commands.fifo, commands-dlq.fifo, results, results-dlq] (modules/messaging outputs)
-  queue_commands = local.persistent.queue_arns["shared"][0]
-  queue_results  = local.persistent.queue_arns["shared"][2]
+  # 순서: [commands.fifo, commands-dlq.fifo, results, results-dlq, notification-events, notification-events-dlq] (modules/messaging outputs)
+  queue_commands      = local.persistent.queue_arns["shared"][0]
+  queue_results       = local.persistent.queue_arns["shared"][2]
+  queue_notifications = local.persistent.queue_arns["shared"][4]
 
   app_namespace           = "freshlink"     # gitops 앱 네임스페이스
   observability_namespace = "observability" # gitops 관측성 네임스페이스
@@ -105,7 +106,7 @@ module "cache" {
 }
 
 # ---------------------------------------------------------------------------
-# IRSA Role: 서비스 5개 + 클러스터 부품 3개 + Loki
+# IRSA Role: 서비스 6개 + 클러스터 부품 3개 + Loki
 # ---------------------------------------------------------------------------
 # gateway BFF(10/28): 로그인·토큰 갱신(AdminInitiateAuth)만 이 User Pool에. SignUp·ConfirmSignUp·RevokeToken·/oauth2/token은
 # IAM이 필요 없는 공개 API라 bff 클라이언트 시크릿(ExternalSecret)만 있으면 된다.
@@ -138,6 +139,11 @@ data "aws_iam_policy_document" "inventory_service" {
     actions   = ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
     resources = [local.queue_commands, local.queue_results] # DISPOSE는 자기 commands 큐로 보낸다
   }
+  statement {
+    sid       = "SendNotifications" # 유통기한 임박·경과, 재입고 (10/30 화면 알림)
+    actions   = ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
+    resources = [local.queue_notifications]
+  }
 }
 
 data "aws_iam_policy_document" "order_service" {
@@ -151,6 +157,20 @@ data "aws_iam_policy_document" "order_service" {
     actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
     resources = [local.queue_results]
   }
+  statement {
+    sid       = "SendNotifications" # 지금 보내는 알림은 없다. 나중에 주문 쪽 알림이 생기면 쓴다(10/30)
+    actions   = ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
+    resources = [local.queue_notifications]
+  }
+}
+
+# notification-service(10/30 화면 알림): 알림 큐에서 받기만 한다
+data "aws_iam_policy_document" "notification_service" {
+  statement {
+    sid       = "ConsumeNotifications"
+    actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
+    resources = [local.queue_notifications]
+  }
 }
 
 data "aws_iam_policy_document" "logistics_simulator" {
@@ -161,7 +181,7 @@ data "aws_iam_policy_document" "logistics_simulator" {
   }
 }
 
-# External Secrets Operator: 앱 DB 비밀 3개, 토스 키, gateway bff 클라이언트 비밀, order Valkey 주소만 읽는다(시드 계정 비밀은 읽지 않는다).
+# External Secrets Operator: 앱 DB 비밀 4개(notification 포함), 토스 키, gateway bff 클라이언트 비밀, order Valkey 주소만 읽는다(시드 계정 비밀은 읽지 않는다).
 data "aws_iam_policy_document" "external_secrets" {
   statement {
     sid     = "ReadAppSecrets"
@@ -225,6 +245,11 @@ module "irsa" {
       namespace       = local.app_namespace
       service_account = "logistics-simulator"
       policy_json     = data.aws_iam_policy_document.logistics_simulator.json
+    }
+    notification-service = {
+      namespace       = local.app_namespace
+      service_account = "notification-service"
+      policy_json     = data.aws_iam_policy_document.notification_service.json
     }
     aws-load-balancer-controller = {
       namespace       = "kube-system"

@@ -1,4 +1,4 @@
-﻿# 스키마 3개와 앱 DB 사용자 3개를 만든다(여러 번 돌려도 된다. 비밀번호는 Secrets Manager 값으로 맞춘다).
+﻿# 서비스 스키마와 앱 DB 사용자를 만든다: member·inventory·orders·notification (여러 번 돌려도 된다. 비밀번호는 Secrets Manager 값으로 맞춘다).
 # 테이블은 만들지 않는다. 각 서비스 Flyway가 만든다.
 #
 # 준비: 다른 PowerShell 창에서 scripts\db-port-forward.ps1이 'Waiting for connections...' 상태여야 한다.
@@ -39,7 +39,7 @@ foreach ($p in $out.app_databases.value.PSObject.Properties) {
     $sql.Add(('ALTER USER ''{0}''@''%'' IDENTIFIED BY ''{1}'';' -f $user, $pw))
     $sql.Add(('GRANT ALL PRIVILEGES ON `{0}`.* TO ''{1}''@''%'';' -f $schema, $user))
 }
-$sql.Add("SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('member', 'inventory', 'orders');")
+$sql.Add("SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('member', 'inventory', 'orders', 'notification');")
 $sql.Add("SELECT user, host FROM mysql.user WHERE user LIKE '%\_app';")
 
 $tmp = [System.IO.Path]::GetTempFileName()
@@ -52,4 +52,4 @@ try {
 }
 
 Write-Host ""
-Write-Host "완료: 위에 스키마 3개(inventory, member, orders)와 사용자 3개(*_app)가 보이면 성공이다."
+Write-Host "완료: 위에 스키마 4개(inventory, member, notification, orders)와 사용자 4개(*_app)가 보이면 성공이다."

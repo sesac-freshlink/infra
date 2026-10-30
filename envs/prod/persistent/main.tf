@@ -116,6 +116,7 @@ module "dlq_alert" {
   dlq_names = [
     module.messaging.queues["shared"].commands_dlq,
     module.messaging.queues["shared"].results_dlq,
+    module.messaging.queues["shared"].notifications_dlq, # 화면 알림(10/30)
   ]
 }
 
