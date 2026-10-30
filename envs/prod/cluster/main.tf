@@ -169,7 +169,9 @@ data "aws_iam_policy_document" "external_secrets" {
       # 비밀 ARN 끝에 무작위 6자리가 붙는다
       ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.persistent.toss_secret_name}-??????"],
       [local.persistent.cognito_gateway_secret_arn], # gateway bff 클라이언트 ID·시크릿
-      [module.cache.order_redis_secret_arn],         # order Valkey 주소·포트
+      # order Valkey 주소·포트. module.cache 출력 대신 이름으로 ARN을 만든다: 비밀이 아직 없을 때(클러스터 생성 전·삭제 중)
+      # 출력 값이 plan 때 정해지지 않아 modules/irsa의 for_each(policy_json != null)가 "Invalid for_each argument"로 멈춘다.
+      ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.name_prefix}/order/redis-??????"],
     )
   }
 }
