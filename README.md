@@ -61,7 +61,7 @@
 | DB | RDS MySQL 8.4 `freshlink-<env>-mysql` + SSM 접속용 t4g.nano(public-a, 인바운드 없음) | db.t4g.small, gp3 20 GiB, 단일 AZ, 스키마 3개 |
 | 메시징 | SQS `<env>-inventory-commands.fifo`, `<env>-inventory-results` + DLQ 2개 (dev는 개발자별 큐 추가) | 3번 실패 시 DLQ |
 | 네트워크 | VPC(dev `10.0.0.0/16`, prod `10.1.0.0/16`), 서브넷 6개, NAT 1개, S3 Gateway 엔드포인트 | 앱 서브넷 /20 |
-| 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function, `/api/*` → gateway ALB | 도메인이 없어 ACM 없이 `https://<id>.cloudfront.net` |
+| 프론트 | S3(비공개) + CloudFront(OAC) + CloudFront Function, `/api/*` → gateway ALB | 주소 prod `https://<도메인>`, dev `https://dev.<도메인>` (Route 53 + `us-east-1` ACM, 4-21). 도메인을 켜기 전에는 `https://<id>.cloudfront.net` |
 | 보안 | IRSA Role, Secrets Manager + External Secrets Operator, 보안 그룹 | |
 | 인증 | Cognito User Pool `freshlink-<env>-users` + 가입 확인 트리거 Lambda | |
 | 관측성 | S3 Loki 로그 버킷(14일), Loki IRSA Role, EBS CSI 드라이버 | 스택은 [gitops/platform/observability](https://github.com/sesac-freshlink/gitops/tree/main/platform/observability)에서 ArgoCD가 설치 |
@@ -166,6 +166,7 @@ infra/
 - [x] BFF(10/28): 서버용 앱 클라이언트 `freshlink-<env>-bff`(시크릿) + 비밀 `freshlink-<env>/gateway/cognito` + gateway IRSA(`AdminInitiateAuth`) + 로그인 도메인·구글 IdP (4-17)
 - [ ] BFF 전환하는 날: gateway `COGNITO_CLIENT_ID`를 bff로, 프론트 `VITE_COGNITO_*` 주입 지우기, `web` 클라이언트 지우기 (4-17 맨 아래)
 - [ ] CloudFront 보안 헤더·CSP (4-18): Report-Only로 걸고 dev 확인 → enforce. prod는 BFF가 `main`에 나갈 때 Cognito 주소를 빼고 enforce
+- [ ] Route 53 도메인 + CloudFront ACM 인증서 (4-21): 도메인 사기 → `domain_name` PR → dev 적용·확인 → 카카오 도메인 → prod 적용 → 팀에 새 주소 알리기
 
 ## 4. 사용법
 
@@ -1706,14 +1707,14 @@ order 설정 예(경우님): `spring.data.redis.host: ${REDIS_HOST}`, `spring.da
 | 올리는 방법 | member-service가 presigned PUT URL을 준다(5분, `Content-Type` 고정) → 브라우저가 그 URL로 PUT → member에 키 저장 |
 | member 권한 | IRSA `freshlink-<env>-member-service-irsa`에 `s3:PutObject` (`<버킷>/images/stores/*`만). 읽기·지우기는 없다 |
 | member에 넘기는 값 | 환경 변수 `STORE_IMAGE_BUCKET` (root 값 `cluster.env`, 모든 서비스에 들어가지만 member만 쓴다) |
-| 브라우저 PUT 허용 | 버킷 CORS: 화면 주소(`https://<id>.cloudfront.net`)에서 오는 `PUT`, 헤더 `Content-Type`만. CSP `connect-src`에 버킷 주소 |
+| 브라우저 PUT 허용 | 버킷 CORS: 화면 주소(도메인과 `https://<id>.cloudfront.net` 둘 다, 4-21)에서 오는 `PUT`, 헤더 `Content-Type`만. CSP `connect-src`에 버킷 주소 |
 | 배포가 지우지 않게 | frontend `frontend-deploy.yml`의 `s3 sync --delete`가 `images/*`를 건너뛴다(frontend PR) |
 
 **카카오맵 키.** 카카오맵 JavaScript 키는 원래 브라우저에 보이는 값이라 SSM에 두지 않고 frontend 레포 Variables에 둔다(토스 클라이언트 키와 같은 방식). 보호는 카카오 콘솔의 도메인 제한으로 한다.
 
 1. https://developers.kakao.com → 로그인 → **내 애플리케이션** → **애플리케이션 추가하기**(이름 `FreshLink`).
 2. 만든 앱 → **앱 키**에서 **JavaScript 키**를 복사한다.
-3. **플랫폼** → **Web 플랫폼 등록** → 사이트 도메인에 dev·prod 화면 주소 두 개를 넣는다(`terraform "-chdir=envs/dev/persistent" output -raw frontend_url`, prod도 같은 방법).
+3. **플랫폼** → **Web 플랫폼 등록** → 사이트 도메인에 dev·prod 화면 주소 두 개를 넣는다(`terraform "-chdir=envs/dev/persistent" output -raw frontend_url`, prod도 같은 방법). 도메인을 붙이면(4-21) 새 주소 두 개를 더한다.
 4. **카카오맵** 사용 설정을 켠다(앱 설정 → 카카오맵 → 활성화).
 5. PowerShell에서 레포 변수를 넣는다(dev·prod 같은 키).
 
@@ -1740,9 +1741,134 @@ member IRSA 권한과 `STORE_IMAGE_BUCKET`은 다음 클러스터 생성 때 들
 
 | 증상 | 원인과 해결 |
 | --- | --- |
-| 브라우저 PUT이 CORS 오류 | 화면 주소가 CORS에 없다(도메인을 바꾼 뒤라면 `modules/frontend`의 `allowed_origins`에 새 주소를 더한다). presigned URL을 만들 때 넣은 `Content-Type`과 PUT 헤더가 다르면 403 `SignatureDoesNotMatch` |
+| 브라우저 PUT이 CORS 오류 | 화면 주소가 CORS에 없다(도메인을 붙인 뒤라면 persistent apply를 했는지 본다. CORS는 `module.frontend.urls`를 따른다). presigned URL을 만들 때 넣은 `Content-Type`과 PUT 헤더가 다르면 403 `SignatureDoesNotMatch` |
 | 지도가 회색이고 콘솔에 `appkey` 오류 | 카카오 콘솔 Web 플랫폼에 지금 화면 주소가 없다 |
 | 배포 뒤 점포 이미지가 사라졌다 | frontend PR(`--exclude "images/*"`)이 합쳐지기 전 배포다. 다시 올린다 |
+
+### 4-21. Route 53 도메인과 CloudFront 인증서 (멘토링 후 할 일, 김진아)
+
+Route 53에서 `.com` 도메인을 하나 사서 화면 주소를 바꾼다. 도메인 하나로 dev·prod를 같이 쓴다.
+
+| 항목 | 값 |
+| --- | --- |
+| prod 주소 | `https://<도메인>` (도메인 그 자체) |
+| dev 주소 | `https://dev.<도메인>` |
+| 예전 주소 | `https://<id>.cloudfront.net`도 그대로 열린다(CloudFront 기본 주소는 지워지지 않는다) |
+| 인증서 | 환경마다 ACM 공인 인증서 1개(`us-east-1`, DNS 검증, 무료, 자동 갱신). CloudFront는 `us-east-1` 인증서만 쓴다 |
+| DNS | 도메인을 사면 생기는 호스팅 영역을 Terraform이 읽어서(`data "aws_route53_zone"`) A·AAAA 별칭 레코드와 검증 레코드를 넣는다 |
+| 비용 | `.com` 등록 연 15 USD 안팎(산 날 한 번에), 호스팅 영역 월 0.50 USD. 별칭 레코드 조회와 인증서는 무료 |
+| 켜는 법 | `envs/dev/persistent`·`envs/prod/persistent`의 변수 `domain_name` 기본값에 도메인을 넣는다. 비어 있으면(`""`) 지금처럼 기본 주소만 쓴다 |
+
+주소가 바뀌면 같이 바뀌는 곳:
+
+| 곳 | 어떻게 |
+| --- | --- |
+| Cognito `bff` 클라이언트 콜백·로그아웃 URL | 자동. 새 주소와 예전 주소를 둘 다 넣는다(`module.frontend.urls`) |
+| gateway `FRONTEND_URL` (구글 콜백 `redirect_uri`, 로그인 뒤 돌아갈 곳) | 자동. persistent output `frontend_url`이 새 주소가 되고, 다음 클러스터 생성 때 들어간다 |
+| 프론트 버킷 CORS(점포 이미지 PUT) | 자동. 새 주소와 예전 주소 둘 다 |
+| CSP | 바꿀 것 없음(`'self'`라 주소를 적지 않는다) |
+| 토스 성공·실패 리디렉트 | 바꿀 것 없음. 화면이 `window.location.origin`으로 만든다 |
+| 카카오 콘솔 Web 플랫폼 도메인 | **사람이**: 새 주소 두 개를 더한다(아래 5) |
+| frontend 배포 요약에 찍히는 주소 | frontend `frontend-deploy.yml`이 배포의 별칭(도메인)을 먼저 찍는다 |
+
+**0) 준비.** `C:\fresh-link\repos\infra`에서 연 PowerShell. 새싹 계정에서 도메인 등록과 `us-east-1`이 막혀 있지 않은지 먼저 본다.
+
+```powershell
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity --query Arn --output text                        # user/sesac-c2
+aws route53domains check-domain-availability --region us-east-1 --domain-name "<사고 싶은 이름>.com"
+#   "Availability": "AVAILABLE" 이면 살 수 있다. UNAVAILABLE이면 다른 이름. AccessDenied면 멈추고 스레드에 붙여 넣는다
+aws acm list-certificates --region us-east-1 --query "length(CertificateSummaryList)"
+#   숫자(0이어도 된다)가 나오면 us-east-1을 쓸 수 있다. AccessDenied면 멈춘다
+aws route53domains get-domain-suggestions --region us-east-1 --domain-name "freshlink.com" --suggestion-count 10 --only-available
+#   이름이 떠오르지 않으면 살 수 있는 비슷한 이름을 보여 준다
+```
+
+**1) 도메인 사기 (콘솔).**
+
+1. AWS 콘솔(`sesac-c2`) → 위 검색창에 `Route 53` → 왼쪽 **Registered domains** → **Register domains**.
+2. 이름을 넣고 **Search** → `.com`이 **Available**이면 **Select** → **Proceed to checkout**.
+3. 기간 **1 year**, **Auto-renew**는 끈다(프로젝트가 끝나면 그냥 만료되게) → **Next**.
+4. 연락처: 개인(Person), 이름·주소·전화(`+82.1012345678` 형식)·이메일을 **실제 값**으로 넣는다. 이메일로 확인 메일이 온다. **Privacy protection**은 켜 둔다(WHOIS에 개인 정보가 안 보인다) → **Next**.
+5. 약관에 체크 → **Submit**. 요금(연 15 USD 안팎)은 이때 청구된다.
+6. 왼쪽 **Requests**에서 상태가 `Successful`이 될 때까지 기다린다(보통 15분~1시간, 길면 하루).
+7. 메일함에서 **"Verify your email address"**(보낸 곳 `noreply@registrar.amazon` 또는 `route53`) 메일의 링크를 누른다. **15일 안에 누르지 않으면 도메인이 정지된다.**
+8. 왼쪽 **Hosted zones**에 `<도메인>` 호스팅 영역이 생겼는지 본다(NS·SOA 레코드 2개). 이 영역은 **지우지 않는다**(Terraform은 읽기만 한다).
+
+```powershell
+aws route53 list-hosted-zones-by-name --dns-name "<도메인>" --query "HostedZones[0].Name" --output text
+#   <도메인>. 이 나오면 성공
+```
+
+**2) 도메인 켜는 PR.** 두 파일의 `domain_name` 기본값에 도메인을 넣는 PR을 합친다(Claude가 만든다).
+
+```hcl
+# envs/dev/persistent/variables.tf, envs/prod/persistent/variables.tf
+variable "domain_name" {
+  default = "<도메인>"
+}
+```
+
+**3) dev 적용.** 클러스터는 꺼져 있어도 된다. 다른 PR의 apply와 **동시에 하지 않는다**(state 잠금).
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"    # us-east-1 provider가 새로 생겨서 init을 먼저 한다
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 5 to add" (인증서, 검증 레코드, 검증 대기, A·AAAA 별칭)와 change(CloudFront 배포, 버킷 CORS, Cognito bff 클라이언트.
+#   버킷 정책·배포 Role 정책이 배포 ARN을 다시 읽어 change가 더 보일 수 있다)를 보고 yes. destroy는 0이어야 한다
+#   검증 대기에서 몇 분 멈춘다. CloudFront 배포 변경은 5~10분 걸린다
+terraform "-chdir=envs/dev/persistent" output -raw frontend_url             # https://dev.<도메인>
+terraform "-chdir=envs/dev/persistent" output -raw frontend_cloudfront_url  # 예전 주소
+```
+
+**4) dev 확인.**
+
+```powershell
+$base = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
+$old  = terraform "-chdir=envs/dev/persistent" output -raw frontend_cloudfront_url
+Resolve-DnsName ($base -replace "https://", "") -Type A      # IP가 여러 개 나오면 성공
+curl.exe -sI "$base/" | Select-String "HTTP/|strict-transport"   # HTTP/1.1 200 (또는 HTTP/2 200)
+curl.exe -sI "$old/"  | Select-String "HTTP/"                    # 예전 주소도 200
+curl.exe -sv "$base/" -o NUL 2>&1 | Select-String "subject:|issuer:"   # subject CN=dev.<도메인>, issuer Amazon
+```
+
+브라우저로 `$base`를 열어 자물쇠(연결이 안전함)를 확인한다. 클러스터가 켜져 있을 때(평일 09:00~21:00) 이메일 로그인 → 구글 로그인 → 주문 → 토스 결제 → 성공 화면까지 지나간다. gateway의 `FRONTEND_URL`은 다음 클러스터 생성 때 바뀐다. 클러스터가 이미 켜져 있으면 Actions → dev-cluster → Run workflow (`create`)를 한 번 더 돌린다.
+
+```powershell
+kubectl -n freshlink exec deploy/gateway -- sh -c 'echo $FRONTEND_URL'    # https://dev.<도메인>
+```
+
+**5) 바깥 콘솔.**
+
+1. 카카오: https://developers.kakao.com → 내 애플리케이션 → `FreshLink` → **플랫폼** → **Web** → 사이트 도메인에 `https://dev.<도메인>`, `https://<도메인>`을 **더한다**(예전 주소는 지우지 않는다. 최대 10개).
+2. 토스: 결제위젯은 `successUrl`·`failUrl`을 화면이 매번 넘겨서 개발자센터에 등록할 주소가 없다. 개발자센터에 주소를 따로 넣어 둔 곳(웹훅 등)이 있으면 그것만 새 주소로 바꾼다.
+3. 구글(선택): Google Auth Platform → **Branding** → **Authorized domains**에 `<도메인>`을 더한다. 앱을 "In production"으로 올리려면 홈페이지·개인정보처리방침 주소가 이 도메인 아래에 있어야 한다. 구글 클라이언트의 리디렉션 URI는 Cognito 로그인 도메인이라 바꾸지 않는다.
+
+**6) prod.** dev 확인이 끝난 뒤. prod 클러스터는 꺼져 있어도 된다. gateway `FRONTEND_URL`은 다음 prod-cluster `create` 때 들어간다.
+
+```powershell
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   dev와 같은 "5 to add"와 change, destroy 0
+terraform "-chdir=envs/prod/persistent" output -raw frontend_url   # https://<도메인>
+```
+
+prod를 켠 날 4)와 같은 확인을 `envs/prod/persistent`로 한다. 그다음 팀에 새 주소 두 개를 알린다.
+
+예전 주소에서 할 수 있는 것: 화면, 이메일 로그인, 주문·결제. **구글 로그인은 새 주소에서만 된다**(구글이 돌아오는 주소가 gateway `FRONTEND_URL` 하나라서, 예전 주소에 둔 상태 쿠키가 새 주소로 가지 않는다).
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| 0)의 `check-domain-availability`가 `AccessDenied` | 새싹 조직 정책(SCP)이 도메인 등록을 막았다. 강사님께 허용을 요청하거나, 다른 등록 업체에서 사고 Route 53 호스팅 영역(월 0.5 USD)만 만들어 NS를 옮긴다 |
+| apply가 `aws_acm_certificate_validation`에서 75분 뒤 시간 초과 | 검증 CNAME이 퍼지지 않았다. 1-6의 등록이 `Successful`인지, 호스팅 영역이 하나뿐인지(같은 이름 영역이 두 개면 도메인 NS와 다른 쪽에 레코드가 들어간다) 본다 |
+| apply가 `CNAMEAlreadyExists` | 그 주소가 다른 CloudFront 배포의 별칭으로 이미 쓰인다. 콘솔에서 그 배포의 Alternate domain name을 지운다 |
+| apply가 `no matching Route 53 Hosted Zone found` | `domain_name` 철자가 틀렸거나 1-8의 호스팅 영역이 아직 없다 |
+| 브라우저가 `NET::ERR_CERT_COMMON_NAME_INVALID` | 배포가 아직 `InProgress`다. 몇 분 뒤 다시 본다 |
+| 구글 로그인 뒤 `redirect_mismatch` | Cognito 콜백에 새 주소가 없다. 3)의 apply가 Cognito까지 바꿨는지 본다(`aws cognito-idp describe-user-pool-client`의 `CallbackURLs`) |
+| 지도가 회색, 콘솔에 `appkey` 오류 | 5-1의 카카오 도메인을 아직 안 넣었다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 

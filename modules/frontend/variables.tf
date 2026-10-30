@@ -37,3 +37,21 @@ variable "csp_extra_connect_src" {
   type        = list(string)
   default     = []
 }
+
+variable "hostnames" {
+  description = "화면 주소(도메인). 첫 번째가 대표 주소다. 비우면 CloudFront 기본 주소만 쓴다. 예 [\"dev.<도메인>\"]"
+  type        = list(string)
+  default     = []
+}
+
+variable "zone_id" {
+  description = "hostnames가 들어 있는 Route 53 호스팅 영역 ID (도메인을 사면 자동으로 생긴다). hostnames가 비면 쓰지 않는다"
+  type        = string
+  default     = ""
+  nullable    = false # 도메인이 없을 때 부르는 쪽이 null을 넘겨도 ""로 받는다
+
+  validation {
+    condition     = length(var.hostnames) == 0 || var.zone_id != ""
+    error_message = "hostnames를 넣으면 zone_id도 넣어야 한다."
+  }
+}

@@ -64,7 +64,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 | 상태 | S3 `freshlink-tfstate-<계정ID 끝 4자리>`, 키 5개 `global`, `dev/persistent`, `dev/cluster`, `prod/persistent`, `prod/cluster` (+ `/terraform.tfstate`), S3 잠금 파일(`use_lockfile`) |
 | 컴퓨팅 | 환경마다 EKS `freshlink-<env>-eks`, 관리형 노드 그룹 t3.large × 2 (최대 3) |
 | 데이터·메시징 | 환경마다 RDS MySQL 8.4 db.t4g.small(`freshlink-<env>-mysql`)과 SSM 접속용 t4g.nano(public-a, 공인 IP, 인바운드 없음. NAT 없이 SSM에 닿게), SQS `<env>-inventory-commands.fifo`·`<env>-inventory-results`·DLQ 2개(dev는 개발자별 큐 추가) |
-| 프론트 | 환경마다 S3 + CloudFront(OAC), `/api/*` → gateway ALB. 도메인이 없어 ACM 없음(기본 `*.cloudfront.net`) |
+| 프론트 | 환경마다 S3 + CloudFront(OAC), `/api/*` → gateway ALB. 변수 `domain_name`을 넣으면 Route 53 별칭 + `us-east-1` ACM(prod `<도메인>`, dev `dev.<도메인>`), 비면 기본 `*.cloudfront.net` (README 4-21) |
 | 인증 | 환경마다 Cognito User Pool `freshlink-<env>-users` (그룹 OWNER·CUSTOMER, `custom:storeId`) |
 | 비밀 | Secrets Manager + External Secrets Operator |
 | 켜고 끄기 | EventBridge Scheduler (RDS·nano·노드 수, 환경별 `persistent`에 정의) + GitHub Actions (NAT·`cluster` 묶음, `env` 입력) |

@@ -9,3 +9,9 @@ variable "scheduler_enabled" {
   type        = bool
   default     = true
 }
+
+variable "domain_name" {
+  description = "Route 53에서 산 도메인(호스팅 영역 이름, 예 freshlink-store.com). 비우면 CloudFront 기본 주소만 쓴다. dev 화면 주소는 dev.<domain_name> (README 4-21)"
+  type        = string
+  default     = ""
+}
