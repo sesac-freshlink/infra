@@ -1747,16 +1747,16 @@ member IRSA 권한과 `STORE_IMAGE_BUCKET`은 다음 클러스터 생성 때 들
 
 ### 4-21. Route 53 도메인과 CloudFront 인증서 (멘토링 후 할 일, 김진아)
 
-Route 53에서 `.com` 도메인을 하나 사서 화면 주소를 바꾼다. 도메인 하나로 dev·prod를 같이 쓴다.
+Route 53에서 `.com` 도메인을 하나 사서 화면 주소를 바꾼다. 도메인 하나로 dev·prod를 같이 쓴다. 2026-10-30에 **`getfreshlink.com`**을 샀다(1년 16 USD, 자동 갱신 끔).
 
 | 항목 | 값 |
 | --- | --- |
-| prod 주소 | `https://<도메인>` (도메인 그 자체) |
-| dev 주소 | `https://dev.<도메인>` |
+| prod 주소 | `https://<도메인>` (도메인 그 자체) = https://getfreshlink.com |
+| dev 주소 | `https://dev.<도메인>` = https://dev.getfreshlink.com |
 | 예전 주소 | `https://<id>.cloudfront.net`도 그대로 열린다(CloudFront 기본 주소는 지워지지 않는다) |
 | 인증서 | 환경마다 ACM 공인 인증서 1개(`us-east-1`, DNS 검증, 무료, 자동 갱신). CloudFront는 `us-east-1` 인증서만 쓴다 |
 | DNS | 도메인을 사면 생기는 호스팅 영역을 Terraform이 읽어서(`data "aws_route53_zone"`) A·AAAA 별칭 레코드와 검증 레코드를 넣는다 |
-| 비용 | `.com` 등록 연 15 USD 안팎(산 날 한 번에), 호스팅 영역 월 0.50 USD. 별칭 레코드 조회와 인증서는 무료 |
+| 비용 | `.com` 등록 연 16 USD(산 날 한 번에. 짧은 이름은 프리미엄 가격이 붙는다. 예 `freshlink.link` 54 USD), 호스팅 영역 월 0.50 USD. 별칭 레코드 조회와 인증서는 무료 |
 | 켜는 법 | `envs/dev/persistent`·`envs/prod/persistent`의 변수 `domain_name` 기본값에 도메인을 넣는다. 비어 있으면(`""`) 지금처럼 기본 주소만 쓴다 |
 
 주소가 바뀌면 같이 바뀌는 곳:
