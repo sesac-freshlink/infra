@@ -11,7 +11,7 @@
 | 상태 저장 | S3 `freshlink-tfstate-<계정ID 끝 4자리>`, 루트마다 키 하나(5개), S3 잠금 파일(`use_lockfile`)로 잠금 |
 | 브랜치 | `main` ← `feat/I-xx-설명` (dev 브랜치 없음, 환경은 폴더로 나눈다) |
 
-설계 근거와 비용은 `.github` 레포 [`docs/aws-리소스-계획.md`](https://github.com/sesac-freshlink/.github/blob/main/docs/aws-%EB%A6%AC%EC%86%8C%EC%8A%A4-%EA%B3%84%ED%9A%8D.md)에 있다. 이 README와 다르면 그 문서를 따른다.
+설계 근거와 비용은 `.github` 레포 [`docs/기획/aws-리소스-계획.md`](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%ED%9A%8D/aws-%EB%A6%AC%EC%86%8C%EC%8A%A4-%EA%B3%84%ED%9A%8D.md)에 있다. 이 README와 다르면 그 문서를 따른다.
 
 ## 지금 할 일 (김진아, 2026-10-20 기준)
 
@@ -38,9 +38,9 @@
 
 ## 1. 무엇이 만들어지나
 
-![FreshLink 아키텍처 구조도](https://raw.githubusercontent.com/sesac-freshlink/.github/main/docs/architecture/architecture.png)
+![FreshLink 아키텍처 구조도](https://raw.githubusercontent.com/sesac-freshlink/.github/main/docs/기획/architecture/architecture.png)
 
-> 번호별 흐름 설명: [.github 레포 docs/architecture](https://github.com/sesac-freshlink/.github/blob/main/docs/architecture/README.md)
+> 번호별 흐름 설명: [.github 레포 docs/기획/architecture](https://github.com/sesac-freshlink/.github/blob/main/docs/기획/architecture/README.md)
 
 두 환경이 같이 쓰는 것 (`global/`, 만들어 둠)
 
@@ -106,7 +106,7 @@ GitHub 예약(schedule)만 쓰지 않는 이유: 2026-10-20 화 09:00 NAT 생성
 
 prod 삭제는 Lambda `freshlink-prod-workflow-dispatch`가 `prod-cluster` 워크플로를 누르고, 그 워크플로가 dev-cluster 워크플로를 `env=prod`로 부른다. Lambda는 `action` 하나만 넘길 수 있어서 env를 정해 둔 입구를 따로 뒀다. 같은 일을 하는 워크플로는 dev-cluster 하나다.
 
-이유는 [기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
+이유는 [기획/기술스택과-선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%ED%9A%8D/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC-%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 
 ## 3. 폴더 구조
 
@@ -1024,7 +1024,7 @@ aws scheduler list-schedules --group-name freshlink-dev-workflow-dispatch --quer
 | 지운 비밀 복구 대기 | 0일 | 7일 |
 
 - 리소스: persistent 94개(네트워크 19, RDS·nano·비밀·SSM 파라미터 19, 끄기 일정 12, 워크플로 호출 10, 워크플로 Role 4, Cognito 12, 큐 6, 프론트 11, 토스 비밀 1), cluster 46개(dev와 같다).
-- 비용: 꺼 둔 동안은 RDS 저장 공간·비밀 6개·nano 디스크 정도로 하루 0.2 USD 안팎이다. 켠 날은 dev 하루와 같다([비용-계산.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EB%B9%84%EC%9A%A9-%EA%B3%84%EC%82%B0.md)의 prod 8일).
+- 비용: 꺼 둔 동안은 RDS 저장 공간·비밀 6개·nano 디스크 정도로 하루 0.2 USD 안팎이다. 켠 날은 dev 하루와 같다([비용-계산.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%ED%9A%8D/%EB%B9%84%EC%9A%A9-%EA%B3%84%EC%82%B0.md)의 prod 8일).
 - 팀원 계정(`freshlink-developers`)은 prod를 읽지도 못한다. 이름·태그가 `prod`라서 5장 권한에 걸리지 않는다.
 
 **0) 준비.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell(창 1)에서 친다.
@@ -1397,7 +1397,7 @@ aws sqs purge-queue --queue-url $dlq      # 되돌릴 수 없다. 내용을 (2)�
 
 ### 4-17. BFF 인프라와 구글 로그인 (10/28 결정, 김진아)
 
-gateway가 로그인·토큰 갱신을 대신 하고 토큰을 HttpOnly 쿠키에 두는 BFF로 바꾸기 위한 인프라다. gateway·프론트 로직은 경우님이 `.github` `docs/BFF-인수인계.md`를 보고 만든다. **gateway 토큰 검증 값(`COGNITO_CLIENT_ID`)은 아직 `web` 그대로다.** `bff`로 바꾸는 것은 경우님과 정한 전환하는 날 한다(맨 아래 "전환하는 날").
+gateway가 로그인·토큰 갱신을 대신 하고 토큰을 HttpOnly 쿠키에 두는 BFF로 바꾸기 위한 인프라다. gateway·프론트 로직은 경우님이 `.github` `docs/인수인계/BFF.md`를 보고 만든다. **gateway 토큰 검증 값(`COGNITO_CLIENT_ID`)은 아직 `web` 그대로다.** `bff`로 바꾸는 것은 경우님과 정한 전환하는 날 한다(맨 아래 "전환하는 날").
 
 | 위치 | 생기는 것 (환경마다) |
 | --- | --- |
