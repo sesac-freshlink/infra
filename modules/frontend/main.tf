@@ -5,6 +5,8 @@
 # Terraform이 아니라 scripts/sync-api-origin.sh(켜고 끄기 워크플로의 create 단계)가 맞춘다. Terraform은 이 칸을 건드리지 않는다.
 # 도메인이 없어서 ACM 인증서는 쓰지 않고 CloudFront 기본 주소(https://<id>.cloudfront.net)를 쓴다.
 # 기본 동작(화면)에는 보안 헤더·CSP 응답 헤더 정책을 붙인다(README 4-18).
+# 점포 이미지는 같은 버킷의 images/ 아래에 둔다(README 4-20). member-service가 presigned PUT URL을 주면 브라우저가 버킷에 바로 올리고,
+# 화면은 같은 주소의 /images/...로 읽는다. 배포(frontend-deploy.yml)의 s3 sync --delete는 images/를 건너뛴다.
 
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
@@ -14,7 +16,11 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
 
   s3_origin_id  = "s3"
-  api_origin_id = "api"
+  images_prefix = "images/" # 점포 이미지. 빌드 파일과 섞이지 않게 이 경로만 쓴다
+
+  # 브라우저가 presigned URL로 올릴 때 부르는 버킷 주소 (presigned URL의 호스트)
+  bucket_regional_url = "https://${aws_s3_bucket.site.bucket_regional_domain_name}"
+  api_origin_id       = "api"
 
   # AWS 관리형 정책 ID (모든 계정 공통)
   cache_policy_caching_optimized = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized
@@ -23,10 +29,12 @@ locals {
   # 화면이 실제로 부르는 곳만 연다. API·로그인(BFF)·알림 SSE는 같은 주소의 /api라 'self'로 된다.
   # 구글 로그인은 Cognito 로그인 도메인으로 페이지를 옮기는 것(navigation)이라 CSP와 상관없다.
   # 토스 결제위젯: SDK가 js.tosspayments.com 스크립트를 받고, 결제 수단·약관·결제창은 *.tosspayments.com iframe이다.
+  # 카카오맵: SDK(dapi.kakao.com)가 지도 스크립트를 t1.daumcdn.net에서 더 받는다. 지도 타일은 이미지라 img-src https:로 된다.
+  # 점포 이미지 올리기: 브라우저가 presigned URL로 이 버킷에 PUT 한다(connect-src). 읽기는 같은 주소 /images/라 'self'.
   content_security_policy = join("; ", [
     "default-src 'self'",
-    "script-src 'self' https://js.tosspayments.com",
-    join(" ", concat(["connect-src 'self' https://*.tosspayments.com"], var.csp_extra_connect_src)),
+    "script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.daumcdn.net",
+    join(" ", concat(["connect-src 'self' https://*.tosspayments.com ${local.bucket_regional_url}"], var.csp_extra_connect_src)),
     "frame-src https://*.tosspayments.com",
     "img-src 'self' data: https:", # 상품 이미지가 외부 주소(NCP 등)라 https 전체
     "style-src 'self' 'unsafe-inline'",
@@ -83,6 +91,18 @@ data "aws_iam_policy_document" "site" {
       variable = "AWS:SourceArn"
       values   = [aws_cloudfront_distribution.this.arn]
     }
+  }
+}
+
+# 점포 이미지 올리기(presigned PUT)는 다른 주소(버킷)로 가는 요청이라 CORS가 필요하다. 화면 주소에서 오는 PUT만 받는다
+resource "aws_s3_bucket_cors_configuration" "site" {
+  bucket = aws_s3_bucket.site.id
+
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = ["https://${aws_cloudfront_distribution.this.domain_name}"]
+    allowed_headers = ["Content-Type"]
+    max_age_seconds = 3000
   }
 }
 

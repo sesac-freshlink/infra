@@ -118,6 +118,7 @@ resource "helm_release" "argocd_root" {
         COGNITO_BFF_CLIENT_ID = local.persistent.cognito_bff_client_id # gateway AdminInitiateAuth·SECRET_HASH
         COGNITO_DOMAIN_URL    = local.persistent.cognito_domain_url    # gateway 구글 로그인 /oauth2/authorize·/oauth2/token
         FRONTEND_URL          = local.persistent.frontend_url          # gateway 구글 콜백 redirect_uri(<주소>/api/auth/callback)·로그인 뒤 돌아갈 곳
+        STORE_IMAGE_BUCKET    = local.persistent.frontend_bucket       # member-service 점포 이미지 presigned PUT (키는 images/stores/{storeId}/...)
       }
       # 관측성(할 일 16). gitops argocd/apps templates/observability.yaml의 loki Application이 쓴다
       observability = {

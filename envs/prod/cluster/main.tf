@@ -115,6 +115,16 @@ data "aws_iam_policy_document" "gateway" {
   }
 }
 
+# member-service 점포 이미지(10/30 결정): 프론트 버킷 images/stores/ 아래에만 올릴 수 있는 presigned PUT URL을 만든다.
+# presigned URL의 권한은 URL을 만든 Role의 권한이라 읽기·지우기는 주지 않는다(읽기는 CloudFront /images/).
+data "aws_iam_policy_document" "member_service" {
+  statement {
+    sid       = "PutStoreImages"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.persistent.frontend_bucket_arn}/${local.persistent.store_images_prefix}stores/*"]
+  }
+}
+
 data "aws_iam_policy_document" "inventory_service" {
   statement {
     sid       = "ConsumeCommands"
@@ -194,6 +204,7 @@ module "irsa" {
     member-service = {
       namespace       = local.app_namespace
       service_account = "member-service"
+      policy_json     = data.aws_iam_policy_document.member_service.json
       policy_arns     = [local.persistent.member_cognito_policy_arn] # prod User Pool 관리자 정책
     }
     inventory-service = {

@@ -197,3 +197,13 @@ output "dlq_webhook_secret_name" {
   description = "Discord DLQ 채널 웹훅 주소를 넣을 비밀 이름 (scripts/set-dlq-webhook.ps1)"
   value       = module.dlq_alert.webhook_secret_name
 }
+
+output "frontend_bucket_arn" {
+  description = "prod 프론트 버킷 ARN (cluster member-service IRSA 점포 이미지 올리기)"
+  value       = module.frontend.bucket_arn
+}
+
+output "store_images_prefix" {
+  description = "점포 이미지 경로 (버킷 안 images/)"
+  value       = module.frontend.images_prefix
+}
