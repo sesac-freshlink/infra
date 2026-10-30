@@ -9,8 +9,18 @@ output "distribution_id" {
 }
 
 output "url" {
-  description = "프론트 주소"
-  value       = "https://${aws_cloudfront_distribution.this.domain_name}"
+  description = "프론트 대표 주소. 도메인을 붙였으면 https://<hostnames[0]>, 아니면 CloudFront 기본 주소"
+  value       = local.site_urls[0]
+}
+
+output "urls" {
+  description = "화면이 열리는 주소 전부(도메인들 + CloudFront 기본 주소). Cognito 콜백·버킷 CORS에 쓴다"
+  value       = local.site_urls
+}
+
+output "cloudfront_url" {
+  description = "CloudFront 기본 주소(https://<id>.cloudfront.net). 도메인을 붙인 뒤에도 열린다"
+  value       = local.cloudfront_url
 }
 
 output "deploy_role_arn" {

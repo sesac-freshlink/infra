@@ -163,6 +163,11 @@ output "frontend_distribution_id" {
   value       = module.frontend.distribution_id
 }
 
+output "frontend_cloudfront_url" {
+  description = "prod CloudFront 기본 주소. 도메인을 붙인 뒤에도 열린다(README 4-21)"
+  value       = module.frontend.cloudfront_url
+}
+
 output "frontend_url" {
   description = "prod 프론트 주소. /api/*는 gateway로 간다"
   value       = module.frontend.url

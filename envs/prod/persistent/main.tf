@@ -15,6 +15,18 @@ locals {
   # 켜는 일정은 두지 않는다. scheduler 모듈에 null을 넘기면 그 일정을 만들지 않는다.
   # 오지 않는 날 cron(0 0 1 1 ? 2199)은 AWS가 "will never schedule an invocation"으로 거부한다.
   never = null
+
+  # 화면 주소(README 4-21). 도메인을 사기 전(domain_name = "")에는 CloudFront 기본 주소만 쓴다.
+  # prod는 <도메인> 그 자체, dev는 dev.<도메인>
+  site_hostnames = var.domain_name == "" ? [] : [var.domain_name]
+}
+
+# 도메인을 사면 Route 53이 호스팅 영역을 자동으로 만든다. Terraform은 읽기만 한다(지우지 않게).
+data "aws_route53_zone" "site" {
+  count = var.domain_name == "" ? 0 : 1
+
+  name         = var.domain_name
+  private_zone = false
 }
 
 module "network" {
@@ -81,9 +93,10 @@ module "cognito" {
   name_prefix = local.name_prefix
 
   # BFF·구글 로그인(README 4-17). 콜백은 gateway /api/auth/callback
-  domain_prefix      = "${local.name_prefix}-auth"
-  callback_urls      = ["${module.frontend.url}/api/auth/callback"]
-  logout_urls        = ["${module.frontend.url}/login"]
+  domain_prefix = "${local.name_prefix}-auth"
+  # 화면이 열리는 주소 전부(도메인 + CloudFront 기본 주소, README 4-21)를 받는다
+  callback_urls      = [for u in module.frontend.urls : "${u}/api/auth/callback"]
+  logout_urls        = [for u in module.frontend.urls : "${u}/login"]
   google_secret_name = "${local.name_prefix}-google-oauth" # scripts/set-google-oauth.ps1 -Env prod가 만든다. 없으면 구글 IdP 없이 만든다
 }
 
@@ -111,6 +124,13 @@ module "frontend" {
 
   name_prefix   = local.name_prefix
   deploy_branch = "main"
+
+  hostnames = local.site_hostnames
+  zone_id   = one(data.aws_route53_zone.site[*].zone_id)
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   # prod 화면은 경우님 BFF 코드가 main에 나갈 때까지 Amplify가 Cognito를 직접 부른다. 그날 이 줄을 지우고 enforce로 바꾼다(README 4-18)
   csp_report_only       = true

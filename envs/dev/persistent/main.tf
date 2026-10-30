@@ -13,6 +13,18 @@ locals {
   # cluster 묶음이 이 이름으로 만든다(remote state로 읽는다). 스케줄러는 이름으로 노드 수를 바꾼다.
   eks_cluster_name    = "${local.name_prefix}-eks"
   eks_node_group_name = "${local.name_prefix}-nodes"
+
+  # 화면 주소(README 4-21). 도메인을 사기 전(domain_name = "")에는 CloudFront 기본 주소만 쓴다.
+  # dev는 dev.<도메인>, prod는 <도메인> 그 자체
+  site_hostnames = var.domain_name == "" ? [] : ["dev.${var.domain_name}"]
+}
+
+# 도메인을 사면 Route 53이 호스팅 영역을 자동으로 만든다. Terraform은 읽기만 한다(지우지 않게).
+data "aws_route53_zone" "site" {
+  count = var.domain_name == "" ? 0 : 1
+
+  name         = var.domain_name
+  private_zone = false
 }
 
 module "network" {
@@ -79,9 +91,10 @@ module "cognito" {
   admin_password_auth         = true # gateway 401·403 시험 토큰을 PowerShell로 받는다(README 4-7)
 
   # BFF·구글 로그인(README 4-17). 콜백은 gateway /api/auth/callback. dev는 경우님 PC(Vite 5173 → 로컬 gateway)도 받는다
-  domain_prefix      = "${local.name_prefix}-auth"
-  callback_urls      = ["${module.frontend.url}/api/auth/callback", "http://localhost:5173/api/auth/callback"]
-  logout_urls        = ["${module.frontend.url}/login", "http://localhost:5173/login"]
+  domain_prefix = "${local.name_prefix}-auth"
+  # 화면이 열리는 주소 전부(도메인 + CloudFront 기본 주소, README 4-21)를 받는다
+  callback_urls      = concat([for u in module.frontend.urls : "${u}/api/auth/callback"], ["http://localhost:5173/api/auth/callback"])
+  logout_urls        = concat([for u in module.frontend.urls : "${u}/login"], ["http://localhost:5173/login"])
   google_secret_name = "${local.name_prefix}-google-oauth" # scripts/set-google-oauth.ps1이 만든다. 없으면 구글 IdP 없이 만든다
 }
 
@@ -112,6 +125,13 @@ module "frontend" {
   name_prefix   = local.name_prefix
   deploy_branch = "dev"
   force_destroy = true # dev는 빌드 파일만 있어서 지워도 된다
+
+  hostnames = local.site_hostnames
+  zone_id   = one(data.aws_route53_zone.site[*].zone_id)
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   # dev 화면은 BFF로 바뀌어(10/29) 브라우저가 Cognito를 직접 부르지 않는다. CSP는 아직 Report-Only(README 4-18)
   csp_report_only = true

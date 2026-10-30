@@ -3,7 +3,9 @@
 # - /api/* → ALB(gateway Ingress). 캐시하지 않고 Authorization·Idempotency-Key 헤더와 쿼리를 그대로 넘긴다.
 # ALB는 클러스터 안의 컨트롤러가 만들어서 클러스터를 새로 만들 때마다 주소가 바뀐다. 그래서 /api 오리진 주소는
 # Terraform이 아니라 scripts/sync-api-origin.sh(켜고 끄기 워크플로의 create 단계)가 맞춘다. Terraform은 이 칸을 건드리지 않는다.
-# 도메인이 없어서 ACM 인증서는 쓰지 않고 CloudFront 기본 주소(https://<id>.cloudfront.net)를 쓴다.
+# 주소: var.hostnames가 비어 있으면 CloudFront 기본 주소(https://<id>.cloudfront.net)와 기본 인증서를 쓴다.
+# 넣으면(Route 53에서 산 도메인, README 4-21) us-east-1 ACM 인증서(DNS 검증)를 만들어 붙이고 Route 53에 A·AAAA 별칭을 만든다.
+# 기본 주소는 도메인을 붙인 뒤에도 그대로 열린다.
 # 기본 동작(화면)에는 보안 헤더·CSP 응답 헤더 정책을 붙인다(README 4-18).
 # 점포 이미지는 같은 버킷의 images/ 아래에 둔다(README 4-20). member-service가 presigned PUT URL을 주면 브라우저가 버킷에 바로 올리고,
 # 화면은 같은 주소의 /images/...로 읽는다. 배포(frontend-deploy.yml)의 s3 sync --delete는 images/를 건너뛴다.
@@ -21,6 +23,11 @@ locals {
   # 브라우저가 presigned URL로 올릴 때 부르는 버킷 주소 (presigned URL의 호스트)
   bucket_regional_url = "https://${aws_s3_bucket.site.bucket_regional_domain_name}"
   api_origin_id       = "api"
+
+  # 도메인을 붙였는지. 붙였으면 대표 주소는 hostnames[0]
+  custom_domain  = length(var.hostnames) > 0
+  cloudfront_url = "https://${aws_cloudfront_distribution.this.domain_name}"
+  site_urls      = concat([for h in var.hostnames : "https://${h}"], [local.cloudfront_url])
 
   # AWS 관리형 정책 ID (모든 계정 공통)
   cache_policy_caching_optimized = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized
@@ -94,13 +101,13 @@ data "aws_iam_policy_document" "site" {
   }
 }
 
-# 점포 이미지 올리기(presigned PUT)는 다른 주소(버킷)로 가는 요청이라 CORS가 필요하다. 화면 주소에서 오는 PUT만 받는다
+# 점포 이미지 올리기(presigned PUT)는 다른 주소(버킷)로 가는 요청이라 CORS가 필요하다. 화면 주소(도메인·기본 주소)에서 오는 PUT만 받는다
 resource "aws_s3_bucket_cors_configuration" "site" {
   bucket = aws_s3_bucket.site.id
 
   cors_rule {
     allowed_methods = ["PUT"]
-    allowed_origins = ["https://${aws_cloudfront_distribution.this.domain_name}"]
+    allowed_origins = local.site_urls
     allowed_headers = ["Content-Type"]
     max_age_seconds = 3000
   }
@@ -206,6 +213,65 @@ resource "aws_cloudfront_response_headers_policy" "site" {
   }
 }
 
+# ---------------------------------------------------------------- 도메인 (README 4-21)
+
+# CloudFront 인증서는 us-east-1에서만 만든다. 공인 인증서라 비용이 없고 ACM이 알아서 갱신한다(검증 레코드를 남겨 둔다).
+resource "aws_acm_certificate" "site" {
+  count    = local.custom_domain ? 1 : 0
+  provider = aws.us_east_1
+
+  domain_name               = var.hostnames[0]
+  subject_alternative_names = slice(var.hostnames, 1, length(var.hostnames))
+  validation_method         = "DNS"
+
+  tags = {
+    Name = "${var.name_prefix}-frontend"
+  }
+
+  # 주소를 바꾸면 새 인증서를 먼저 만들고 CloudFront를 옮긴 뒤 옛 인증서를 지운다
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# 검증 레코드(CNAME). 주소마다 하나다. for_each 키를 설정값(주소)으로 둬서 인증서가 없을 때도 plan이 된다
+resource "aws_route53_record" "cert_validation" {
+  for_each = local.custom_domain ? toset(var.hostnames) : toset([])
+
+  zone_id         = var.zone_id
+  name            = one([for o in aws_acm_certificate.site[0].domain_validation_options : o.resource_record_name if o.domain_name == each.key])
+  type            = one([for o in aws_acm_certificate.site[0].domain_validation_options : o.resource_record_type if o.domain_name == each.key])
+  records         = [one([for o in aws_acm_certificate.site[0].domain_validation_options : o.resource_record_value if o.domain_name == each.key])]
+  ttl             = 300
+  allow_overwrite = true
+}
+
+# 발급(ISSUED)까지 기다린다. 보통 몇 분이다
+resource "aws_acm_certificate_validation" "site" {
+  count    = local.custom_domain ? 1 : 0
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.site[0].arn
+  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
+}
+
+# 주소 → CloudFront 별칭 레코드. IPv6(is_ipv6_enabled)도 켜 두어서 AAAA도 만든다. 별칭 레코드는 조회 요금이 없다
+resource "aws_route53_record" "site" {
+  for_each = { for pair in setproduct(var.hostnames, ["A", "AAAA"]) : "${pair[0]} ${pair[1]}" => { name = pair[0], type = pair[1] } }
+
+  zone_id = var.zone_id
+  name    = each.value.name
+  type    = each.value.type
+
+  alias {
+    name                   = aws_cloudfront_distribution.this.domain_name
+    zone_id                = aws_cloudfront_distribution.this.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+# ---------------------------------------------------------------- CloudFront 배포
+
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   comment             = "${var.name_prefix}-frontend" # scripts/sync-api-origin.sh가 이 값으로 배포를 찾는다
@@ -213,6 +279,7 @@ resource "aws_cloudfront_distribution" "this" {
   price_class         = var.price_class
   http_version        = "http2and3"
   is_ipv6_enabled     = true
+  aliases             = var.hostnames
 
   origin {
     origin_id                = local.s3_origin_id
@@ -267,8 +334,12 @@ resource "aws_cloudfront_distribution" "this" {
     }
   }
 
+  # 도메인이 없으면 기본 인증서(*.cloudfront.net). 있으면 ACM 인증서를 SNI로(전용 IP 요금 없음), TLS 1.2 이상만
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = local.custom_domain ? null : true
+    acm_certificate_arn            = local.custom_domain ? aws_acm_certificate_validation.site[0].certificate_arn : null
+    ssl_support_method             = local.custom_domain ? "sni-only" : null
+    minimum_protocol_version       = local.custom_domain ? "TLSv1.2_2021" : "TLSv1"
   }
 
   # /api 오리진 주소는 sync-api-origin.sh가 맞춘다. Terraform이 매번 자리 표시로 되돌리지 않게 오리진 칸 전체를 무시한다.
