@@ -17,3 +17,8 @@ output "storage_class" {
   description = "기본 StorageClass 이름 (gitops 관측성 PVC)"
   value       = kubernetes_storage_class_v1.gp3.metadata[0].name
 }
+
+output "cache_endpoint" {
+  description = "선착순 대기열 Valkey 주소 (TLS, 6379). order-service는 비밀 freshlink-dev/order/redis로 받는다"
+  value       = module.cache.endpoint
+}

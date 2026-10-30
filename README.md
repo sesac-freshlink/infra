@@ -1655,6 +1655,46 @@ BFF가 `main`에 나간 날(4-17 "전환하는 날"의 prod) `envs/prod/persiste
 | 2)에 헤더가 안 나온다 | 배포가 아직 `InProgress`다. `aws cloudfront get-distribution --id (terraform "-chdir=envs/dev/persistent" output -raw frontend_distribution_id) --query Distribution.Status`가 `Deployed`가 된 뒤 다시 본다 |
 | enforce 뒤 결제위젯 자리가 비어 있다 | 콘솔에 `Refused to load the script` / `frame`이 찍혀 있다. 그 주소를 `script-src`·`frame-src`에 더하고, 급하면 `csp_report_only = true`로 되돌려 apply한다 |
 
+### 4-19. 선착순 대기열 Valkey (멘토링 후 할 일, 김진아)
+
+선착순 구매(대기열)용 ElastiCache for Valkey(Redis 호환)를 **cluster 묶음**에 둔다(`modules/cache`). 대기열·입장 토큰은 잠깐 쓰는 값이라 클러스터와 같이 만들고 지운다(dev: 월 08:40 생성, 금 21:00 삭제). 그래서 사람이 따로 apply할 것이 없다.
+
+| 항목 | 값 |
+| --- | --- |
+| 복제 그룹 | `freshlink-<env>-cache`, `cache.t4g.micro` 1대, Valkey 8.0, 복제·백업 없음 |
+| 위치·접근 | 앱 서브넷 2개, 보안 그룹 `freshlink-<env>-cache`는 EKS 클러스터 보안 그룹에서 6379만 받는다 |
+| 암호화 | 전송(TLS)·저장 둘 다 켬. 비밀번호(AUTH)는 없다(보안 그룹으로만 막는다) |
+| order에 넘기는 값 | Secrets Manager `freshlink-<env>/order/redis` JSON `host`·`port` → gitops order values `extraSecrets` → `REDIS_HOST`·`REDIS_PORT` |
+| 비용 | 클러스터가 있는 시간만 든다. 서울 `cache.t4g.micro` Valkey 시간당 요금은 아래 명령으로 확인한다 |
+
+```powershell
+aws pricing get-products --region us-east-1 --service-code AmazonElastiCache `
+  --filters "Type=TERM_MATCH,Field=instanceType,Value=cache.t4g.micro" "Type=TERM_MATCH,Field=location,Value=Asia Pacific (Seoul)" "Type=TERM_MATCH,Field=cacheEngine,Value=Valkey" `
+  --query "PriceList[0]" --output text | ConvertFrom-Json | Select-Object -ExpandProperty terms | ConvertTo-Json -Depth 10 | Select-String "USD"
+```
+
+**순서.** 이 PR(infra)을 먼저 합친다 → 다음 클러스터 생성(dev 월요일 08:40, 급하면 Actions → dev-cluster → Run workflow `create`) 때 Valkey와 비밀이 생긴다(cache 6개 추가: 서브넷 그룹, 보안 그룹, 인바운드 규칙, 복제 그룹, 비밀, 비밀 버전. 복제 그룹은 10분쯤 걸린다) → **그다음에** gitops order values의 `extraSecrets`(redis) PR을 합친다. 순서를 바꾸면 비밀이 없어 order 파드가 뜨지 않고 기다린다.
+
+**확인 (클러스터가 켜져 있을 때).** `C:\fresh-link\repos\infra`에서 연 PowerShell.
+
+```powershell
+$env:AWS_PROFILE = "freshlink-admin"
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+$h = terraform "-chdir=envs/dev/cluster" output -raw cache_endpoint
+kubectl run valkey-check -n freshlink --rm -it --restart=Never --image=valkey/valkey:8 -- valkey-cli -h $h -p 6379 --tls ping
+#   PONG 이 나오면 성공
+kubectl get externalsecret -n freshlink order-service-redis
+#   STATUS SecretSynced 면 order 파드에 REDIS_HOST·REDIS_PORT가 들어간다(gitops PR을 합친 뒤)
+```
+
+order 설정 예(경우님): `spring.data.redis.host: ${REDIS_HOST}`, `spring.data.redis.port: ${REDIS_PORT:6379}`, `spring.data.redis.ssl.enabled: true`.
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| `valkey-cli`가 멈춰 있다가 끊긴다 | `--tls`를 빠뜨렸다(전송 암호화가 켜져 있어 평문 접속은 받지 않는다) |
+| order 파드가 `CreateContainerConfigError` | 비밀 `freshlink-<env>/order/redis`가 없다. 클러스터를 이 PR 전에 만들었으면 dev-cluster `create`를 한 번 더 돌린다 |
+| 클러스터 생성이 `default.valkey8` 파라미터 그룹 오류 | 리전에 Valkey 8이 없다는 뜻이다. `modules/cache` `engine_version`을 `7.2`로 바꾼다 |
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |

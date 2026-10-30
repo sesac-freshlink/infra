@@ -129,5 +129,6 @@ resource "helm_release" "argocd_root" {
     }
   })]
 
-  depends_on = [helm_release.argocd, helm_release.external_secrets]
+  # order-service의 Valkey 비밀이 먼저 있어야 파드가 바로 뜬다(없으면 ExternalSecret이 만들어질 때까지 기다린다)
+  depends_on = [helm_release.argocd, helm_release.external_secrets, module.cache]
 }
