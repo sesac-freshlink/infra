@@ -93,6 +93,18 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_eks" {
 }
 
 # ---------------------------------------------------------------------------
+# 선착순 대기열 Valkey(2차). 클러스터와 같이 만들고 지운다. order-service가 REDIS_HOST·REDIS_PORT로 받는다
+# ---------------------------------------------------------------------------
+module "cache" {
+  source = "../../../modules/cache"
+
+  name_prefix              = local.name_prefix
+  vpc_id                   = local.persistent.vpc_id
+  subnet_ids               = local.persistent.app_subnet_ids
+  client_security_group_id = module.eks.cluster_security_group_id
+}
+
+# ---------------------------------------------------------------------------
 # IRSA Role: 서비스 5개 + 클러스터 부품 3개 + Loki
 # ---------------------------------------------------------------------------
 # gateway BFF(10/28): 로그인·토큰 갱신(AdminInitiateAuth)만 이 User Pool에. SignUp·ConfirmSignUp·RevokeToken·/oauth2/token은
@@ -102,6 +114,16 @@ data "aws_iam_policy_document" "gateway" {
     sid       = "BffLoginInThisPool"
     actions   = ["cognito-idp:AdminInitiateAuth"]
     resources = [local.persistent.cognito_user_pool_arn]
+  }
+}
+
+# member-service 점포 이미지(10/30 결정): 프론트 버킷 images/stores/ 아래에만 올릴 수 있는 presigned PUT URL을 만든다.
+# presigned URL의 권한은 URL을 만든 Role의 권한이라 읽기·지우기는 주지 않는다(읽기는 CloudFront /images/).
+data "aws_iam_policy_document" "member_service" {
+  statement {
+    sid       = "PutStoreImages"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.persistent.frontend_bucket_arn}/${local.persistent.store_images_prefix}stores/*"]
   }
 }
 
@@ -139,7 +161,7 @@ data "aws_iam_policy_document" "logistics_simulator" {
   }
 }
 
-# External Secrets Operator: 앱 DB 비밀 3개, 토스 키, gateway bff 클라이언트 비밀만 읽는다(시드 계정 비밀은 읽지 않는다).
+# External Secrets Operator: 앱 DB 비밀 3개, 토스 키, gateway bff 클라이언트 비밀, order Valkey 주소만 읽는다(시드 계정 비밀은 읽지 않는다).
 data "aws_iam_policy_document" "external_secrets" {
   statement {
     sid     = "ReadAppSecrets"
@@ -149,6 +171,7 @@ data "aws_iam_policy_document" "external_secrets" {
       # 비밀 ARN 끝에 무작위 6자리가 붙는다
       ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.persistent.toss_secret_name}-??????"],
       [local.persistent.cognito_gateway_secret_arn], # gateway bff 클라이언트 ID·시크릿
+      [module.cache.order_redis_secret_arn],         # order Valkey 주소·포트
     )
   }
 }
@@ -183,6 +206,7 @@ module "irsa" {
     member-service = {
       namespace       = local.app_namespace
       service_account = "member-service"
+      policy_json     = data.aws_iam_policy_document.member_service.json
       policy_arns     = [local.persistent.member_cognito_policy_arn] # 할 일 6에서 만든 dev User Pool 관리자 정책
     }
     inventory-service = {

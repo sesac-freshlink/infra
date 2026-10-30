@@ -1594,14 +1594,14 @@ prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`
 | `Content-Security-Policy-Report-Only` (`csp_report_only = false`면 `Content-Security-Policy`) | 아래 |
 
 ```text
-default-src 'self'; script-src 'self' https://js.tosspayments.com; connect-src 'self' https://*.tosspayments.com [+ csp_extra_connect_src];
+default-src 'self'; script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.daumcdn.net; connect-src 'self' https://*.tosspayments.com https://<프론트 버킷>.s3.ap-northeast-2.amazonaws.com [+ csp_extra_connect_src];
 frame-src https://*.tosspayments.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
 - dev: 화면이 BFF라(10/29) 브라우저가 Cognito를 부르지 않는다. API·로그인·알림 SSE는 모두 같은 주소의 `/api`라 `'self'`로 된다.
 - prod: 경우님 BFF 코드가 `main`에 나갈 때까지 Amplify가 `https://cognito-idp.ap-northeast-2.amazonaws.com`을 직접 부르므로 `csp_extra_connect_src`에 넣어 두었다.
 - 구글 로그인은 `freshlink-<env>-auth.auth.ap-northeast-2.amazoncognito.com`으로 **페이지를 옮기는 것**이라 CSP에 넣지 않아도 된다.
-- 지도 API·S3 이미지 버킷처럼 새로 부르는 곳이 생기면 `modules/frontend/main.tf`의 `local.content_security_policy`에 더한다.
+- 카카오맵(`dapi.kakao.com`, `t1.daumcdn.net`)과 점포 이미지 올리기(프론트 버킷 주소로 presigned PUT)는 10/30에 더했다(4-20). 새로 부르는 곳이 생기면 `modules/frontend/main.tf`의 `local.content_security_policy`에 더한다.
 
 **1) dev에 Report-Only로 걸기.** `C:\fresh-link\repos\infra`에서 연 PowerShell. 이 PR이 `main`에 합쳐져 있어야 한다. 클러스터는 꺼져 있어도 된다.
 
@@ -1654,6 +1654,95 @@ BFF가 `main`에 나간 날(4-17 "전환하는 날"의 prod) `envs/prod/persiste
 | apply가 `TooManyResponseHeadersPolicies` | 계정당 응답 헤더 정책 한도(20)에 걸렸다. 콘솔 CloudFront → Policies → Response headers에서 안 쓰는 정책을 지운다 |
 | 2)에 헤더가 안 나온다 | 배포가 아직 `InProgress`다. `aws cloudfront get-distribution --id (terraform "-chdir=envs/dev/persistent" output -raw frontend_distribution_id) --query Distribution.Status`가 `Deployed`가 된 뒤 다시 본다 |
 | enforce 뒤 결제위젯 자리가 비어 있다 | 콘솔에 `Refused to load the script` / `frame`이 찍혀 있다. 그 주소를 `script-src`·`frame-src`에 더하고, 급하면 `csp_report_only = true`로 되돌려 apply한다 |
+
+### 4-19. 선착순 대기열 Valkey (멘토링 후 할 일, 김진아)
+
+선착순 구매(대기열)용 ElastiCache for Valkey(Redis 호환)를 **cluster 묶음**에 둔다(`modules/cache`). 대기열·입장 토큰은 잠깐 쓰는 값이라 클러스터와 같이 만들고 지운다(dev: 월 08:40 생성, 금 21:00 삭제). 그래서 사람이 따로 apply할 것이 없다.
+
+| 항목 | 값 |
+| --- | --- |
+| 복제 그룹 | `freshlink-<env>-cache`, `cache.t4g.micro` 1대, Valkey 8.0, 복제·백업 없음 |
+| 위치·접근 | 앱 서브넷 2개, 보안 그룹 `freshlink-<env>-cache`는 EKS 클러스터 보안 그룹에서 6379만 받는다 |
+| 암호화 | 전송(TLS)·저장 둘 다 켬. 비밀번호(AUTH)는 없다(보안 그룹으로만 막는다) |
+| order에 넘기는 값 | Secrets Manager `freshlink-<env>/order/redis` JSON `host`·`port` → gitops order values `extraSecrets` → `REDIS_HOST`·`REDIS_PORT` |
+| 비용 | 클러스터가 있는 시간만 든다. 서울 `cache.t4g.micro` Valkey 시간당 요금은 아래 명령으로 확인한다 |
+
+```powershell
+aws pricing get-products --region us-east-1 --service-code AmazonElastiCache `
+  --filters "Type=TERM_MATCH,Field=instanceType,Value=cache.t4g.micro" "Type=TERM_MATCH,Field=location,Value=Asia Pacific (Seoul)" "Type=TERM_MATCH,Field=cacheEngine,Value=Valkey" `
+  --query "PriceList[0]" --output text | ConvertFrom-Json | Select-Object -ExpandProperty terms | ConvertTo-Json -Depth 10 | Select-String "USD"
+```
+
+**순서.** 이 PR(infra)을 먼저 합친다 → 다음 클러스터 생성(dev 월요일 08:40, 급하면 Actions → dev-cluster → Run workflow `create`) 때 Valkey와 비밀이 생긴다(cache 6개 추가: 서브넷 그룹, 보안 그룹, 인바운드 규칙, 복제 그룹, 비밀, 비밀 버전. 복제 그룹은 10분쯤 걸린다) → **그다음에** gitops order values의 `extraSecrets`(redis) PR을 합친다. 순서를 바꾸면 비밀이 없어 order 파드가 뜨지 않고 기다린다.
+
+**확인 (클러스터가 켜져 있을 때).** `C:\fresh-link\repos\infra`에서 연 PowerShell.
+
+```powershell
+$env:AWS_PROFILE = "freshlink-admin"
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+$h = terraform "-chdir=envs/dev/cluster" output -raw cache_endpoint
+kubectl run valkey-check -n freshlink --rm -it --restart=Never --image=valkey/valkey:8 -- valkey-cli -h $h -p 6379 --tls ping
+#   PONG 이 나오면 성공
+kubectl get externalsecret -n freshlink order-service-redis
+#   STATUS SecretSynced 면 order 파드에 REDIS_HOST·REDIS_PORT가 들어간다(gitops PR을 합친 뒤)
+```
+
+order 설정 예(경우님): `spring.data.redis.host: ${REDIS_HOST}`, `spring.data.redis.port: ${REDIS_PORT:6379}`, `spring.data.redis.ssl.enabled: true`.
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| `valkey-cli`가 멈춰 있다가 끊긴다 | `--tls`를 빠뜨렸다(전송 암호화가 켜져 있어 평문 접속은 받지 않는다) |
+| order 파드가 `CreateContainerConfigError` | 비밀 `freshlink-<env>/order/redis`가 없다. 클러스터를 이 PR 전에 만들었으면 dev-cluster `create`를 한 번 더 돌린다 |
+| 클러스터 생성이 `default.valkey8` 파라미터 그룹 오류 | 리전에 Valkey 8이 없다는 뜻이다. `modules/cache` `engine_version`을 `7.2`로 바꾼다 |
+
+### 4-20. 점포 이미지와 카카오맵 키 (10/30 결정, 김진아)
+
+**점포 이미지.** 새 버킷을 만들지 않고 프론트 버킷의 `images/` 아래에 둔다. CloudFront는 오리진 칸을 `sync-api-origin.sh`가 맞추느라 Terraform이 오리진을 무시하므로(`ignore_changes = [origin]`) 오리진을 새로 더하기 어렵다. 같은 버킷이면 CloudFront를 바꾸지 않아도 화면이 같은 주소 `/images/...`로 읽는다.
+
+| 항목 | 값 |
+| --- | --- |
+| 버킷 안 위치 | `images/stores/{storeId}/{uuid}.jpg` (키는 member-service가 정한다) |
+| 화면에서 읽는 주소 | `/images/stores/{storeId}/{uuid}.jpg` (같은 주소라 CSP `img-src 'self'`) |
+| 올리는 방법 | member-service가 presigned PUT URL을 준다(5분, `Content-Type` 고정) → 브라우저가 그 URL로 PUT → member에 키 저장 |
+| member 권한 | IRSA `freshlink-<env>-member-service-irsa`에 `s3:PutObject` (`<버킷>/images/stores/*`만). 읽기·지우기는 없다 |
+| member에 넘기는 값 | 환경 변수 `STORE_IMAGE_BUCKET` (root 값 `cluster.env`, 모든 서비스에 들어가지만 member만 쓴다) |
+| 브라우저 PUT 허용 | 버킷 CORS: 화면 주소(`https://<id>.cloudfront.net`)에서 오는 `PUT`, 헤더 `Content-Type`만. CSP `connect-src`에 버킷 주소 |
+| 배포가 지우지 않게 | frontend `frontend-deploy.yml`의 `s3 sync --delete`가 `images/*`를 건너뛴다(frontend PR) |
+
+**카카오맵 키.** 카카오맵 JavaScript 키는 원래 브라우저에 보이는 값이라 SSM에 두지 않고 frontend 레포 Variables에 둔다(토스 클라이언트 키와 같은 방식). 보호는 카카오 콘솔의 도메인 제한으로 한다.
+
+1. https://developers.kakao.com → 로그인 → **내 애플리케이션** → **애플리케이션 추가하기**(이름 `FreshLink`).
+2. 만든 앱 → **앱 키**에서 **JavaScript 키**를 복사한다.
+3. **플랫폼** → **Web 플랫폼 등록** → 사이트 도메인에 dev·prod 화면 주소 두 개를 넣는다(`terraform "-chdir=envs/dev/persistent" output -raw frontend_url`, prod도 같은 방법).
+4. **카카오맵** 사용 설정을 켠다(앱 설정 → 카카오맵 → 활성화).
+5. PowerShell에서 레포 변수를 넣는다(dev·prod 같은 키).
+
+```powershell
+gh variable set DEV_KAKAO_MAP_KEY  --repo sesac-freshlink/frontend --body "<JavaScript 키>"
+gh variable set PROD_KAKAO_MAP_KEY --repo sesac-freshlink/frontend --body "<JavaScript 키>"
+```
+
+**순서.** 이 PR을 합친 뒤 **바로** dev persistent를 apply한다(다음 클러스터 생성이 새 output `frontend_bucket_arn`을 읽는다. apply하지 않으면 월요일 생성이 실패한다). prod도 다음 prod 생성 전에 apply한다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 1 to add, 1 to change, 0 to destroy." (버킷 CORS 추가, 응답 헤더 정책 CSP 변경)를 보고 yes
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   같은 "Plan: 1 to add, 1 to change"
+```
+
+member IRSA 권한과 `STORE_IMAGE_BUCKET`은 다음 클러스터 생성 때 들어간다(dev 월요일 08:40).
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| 브라우저 PUT이 CORS 오류 | 화면 주소가 CORS에 없다(도메인을 바꾼 뒤라면 `modules/frontend`의 `allowed_origins`에 새 주소를 더한다). presigned URL을 만들 때 넣은 `Content-Type`과 PUT 헤더가 다르면 403 `SignatureDoesNotMatch` |
+| 지도가 회색이고 콘솔에 `appkey` 오류 | 카카오 콘솔 Web 플랫폼에 지금 화면 주소가 없다 |
+| 배포 뒤 점포 이미지가 사라졌다 | frontend PR(`--exclude "images/*"`)이 합쳐지기 전 배포다. 다시 올린다 |
 
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
