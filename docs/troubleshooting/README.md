@@ -2,7 +2,7 @@
 
 `infra` 레포에서 겪은 장애·오류와 해결 과정을 남기는 곳이다. 같은 문제를 다시 만났을 때 이 폴더만 검색하면 바로 고칠 수 있게 쓴다.
 
-> 구조도는 [.github 레포 docs/architecture](https://github.com/sesac-freshlink/.github/blob/main/docs/architecture/README.md), 기술 스택 선택 이유는 [.github 레포 docs/기술스택과 선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC%20%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md)에 있다. 이 폴더(`docs/`)에는 트러블슈팅 문서만 둔다.
+> 구조도는 [.github 레포 docs/기획/architecture](https://github.com/sesac-freshlink/.github/blob/main/docs/기획/architecture/README.md), 기술 스택 선택 이유는 [.github 레포 docs/기획/기술스택과-선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%ED%9A%8D/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC-%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md)에 있다. 이 폴더(`docs/`)에는 트러블슈팅 문서만 둔다.
 
 ## 규칙
 

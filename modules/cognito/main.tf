@@ -1,7 +1,7 @@
 # Cognito User Pool 1개(이메일 로그인), 그룹 OWNER·CUSTOMER·ADMIN, custom:storeId, 브라우저용 앱 클라이언트(시크릿 없음),
 # 가입 확인 트리거 Lambda, member-service가 맡을 Cognito 관리자 정책, 시드 계정 비밀.
 # BFF(10/28 결정): gateway용 앱 클라이언트 bff(시크릿 있음)와 그 시크릿 비밀, 로그인 도메인, 구글 IdP.
-# 결정 근거: .github docs/기술스택과 선택이유.md 3-7
+# 결정 근거: .github docs/기획/기술스택과-선택이유.md 3-7
 
 locals {
   pool_name     = "${var.name_prefix}-users"
@@ -115,7 +115,7 @@ resource "aws_cognito_user_pool_client" "web" {
 }
 
 # ---------------------------------------------------------------------------
-# BFF: gateway가 로그인·갱신을 대신 하는 서버용 클라이언트 (10/28 결정, .github docs/BFF-인수인계.md)
+# BFF: gateway가 로그인·갱신을 대신 하는 서버용 클라이언트 (10/28 결정, .github docs/인수인계/BFF.md)
 # 프론트를 다 옮길 때까지 web 클라이언트와 같이 둔다. 다 옮기면 web을 지운다.
 # ---------------------------------------------------------------------------
 data "aws_region" "current" {}

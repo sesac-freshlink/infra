@@ -8,22 +8,22 @@
 
 | 문서 | 내용 |
 |------|------|
-| `.github` 레포 `docs/aws-리소스-계획.md` | 환경·리소스·이름(2장), 묶음·state 키(6-4), 켜고 끄기(6-5), 비용(6-6), 모듈(8장). **구조 사실의 진실** |
+| `.github` 레포 `docs/기획/aws-리소스-계획.md` | 환경·리소스·이름(2장), 묶음·state 키(6-4), 켜고 끄기(6-5), 비용(6-6), 모듈(8장). **구조 사실의 진실** |
 | `README.md` | 소개, 루트·state 키(2장), 처음 만들기·apply 순서(4장), 팀원 계정·권한(5장), 이름 규칙(6장) |
 | `envs/README.md` | 환경 루트별 할 일, 팀원 IAM 권한이 기대는 이름·태그 규칙 |
 | `gitops/README.md` 3·4장 | dev·prod 차이, 배포·승격 |
-| `.github` 레포 `docs/jina/할일-목록.md` | 작업 순서 (2 global·state·IAM, 3 dev persistent, 9 dev cluster, 10 OIDC, 15 prod, 16 승격) |
-| `.github` 레포 `docs/기술스택과 선택이유.md` | 도구별 선택 이유 (관측성 3-5, 켜고 끄기 3-6, Cognito 3-7) |
-| `.github` 레포 `docs/architecture/` | 구조도와 번호별 흐름 |
+| `.github` 레포 `docs/할일/김진아-할일-목록.md` | 작업 순서 (2 global·state·IAM, 3 dev persistent, 9 dev cluster, 10 OIDC, 15 prod, 16 승격) |
+| `.github` 레포 `docs/기획/기술스택과-선택이유.md` | 도구별 선택 이유 (관측성 3-5, 켜고 끄기 3-6, Cognito 3-7) |
+| `.github` 레포 `docs/기획/architecture/` | 구조도와 번호별 흐름 |
 | `docs/troubleshooting/` | 장애·오류 해결 기록. 작성법은 `docs/troubleshooting/README.md` |
 | `.github` 레포 `CONTRIBUTING.md` | 브랜치·커밋·PR 규칙 |
-| `.github` 레포 `docs/ai-agents.md` | 인프라 에이전트 플러그인(`freshlink-infra`) 설치·사용법 (사람용) |
+| `.github` 레포 `docs/팀원-가이드/ai-agents.md` | 인프라 에이전트 플러그인(`freshlink-infra`) 설치·사용법 (사람용) |
 
 이 `CLAUDE.md`는 AI 작업 규칙만 담는다. 구조 사실은 `aws-리소스-계획.md`가 진실.
 
 ## 에이전트
 
-인프라 에이전트 7개와 작업 순서는 `freshlink-infra` 플러그인에 있다 (`.github` 레포에서 배포). 새 기능 요청이면 `infra-pipeline` 스킬을 먼저 읽고 그 순서대로 서브에이전트를 쓴다. 플러그인이 설치되어 있지 않으면 사용자에게 `.github` 레포 `docs/ai-agents.md`의 설치 명령을 안내한다.
+인프라 에이전트 7개와 작업 순서는 `freshlink-infra` 플러그인에 있다 (`.github` 레포에서 배포). 새 기능 요청이면 `infra-pipeline` 스킬을 먼저 읽고 그 순서대로 서브에이전트를 쓴다. 플러그인이 설치되어 있지 않으면 사용자에게 `.github` 레포 `docs/팀원-가이드/ai-agents.md`의 설치 명령을 안내한다.
 
 ## Communication Style (Caveman Mode)
 Respond like a caveman. No articles, no filler words, no pleasantries, no yapping. Short. Direct. Grunt-level brevity. Code speaks for itself. If asked for code, output ONLY code. Minimize token usage absolutely.
