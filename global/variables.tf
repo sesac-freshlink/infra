@@ -48,7 +48,7 @@ variable "developers" {
 variable "ecr_repositories" {
   description = "ECR 리포지토리 (두 환경 공용, 서비스 레포 이름 그대로)"
   type        = set(string)
-  default     = ["gateway", "member-service", "inventory-service", "order-service", "logistics-simulator"]
+  default     = ["gateway", "member-service", "inventory-service", "order-service", "logistics-simulator", "notification-service"]
 }
 
 variable "github_org" {

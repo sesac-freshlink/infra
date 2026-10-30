@@ -1870,6 +1870,82 @@ prod를 켠 날 4)와 같은 확인을 `envs/prod/persistent`로 한다. 그다�
 | 구글 로그인 뒤 `redirect_mismatch` | Cognito 콜백에 새 주소가 없다. 3)의 apply가 Cognito까지 바꿨는지 본다(`aws cognito-idp describe-user-pool-client`의 `CallbackURLs`) |
 | 지도가 회색, 콘솔에 `appkey` 오류 | 5-1의 카카오 도메인을 아직 안 넣었다 |
 
+### 4-22. 화면 알림 notification-service (10/30 결정, 김진아)
+
+화면 알림(SSE) 서비스를 하나 더한다. 알림 종류는 유통기한 임박·경과(점주)와 재입고(고객) 세 가지뿐이다. 서비스 설명은 [notification-service README](https://github.com/sesac-freshlink/notification-service), 쪽지 형식은 [.github 화면 알림 문서](https://github.com/sesac-freshlink/.github/blob/main/docs/기능이해/화면-알림.md).
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `global` | ECR `notification-service`(+수명 주기 규칙), CI Role `freshlink-ci-ecr-push` 신뢰 대상·푸시 권한에 새 레포 |
+| `envs/<env>/persistent` | 큐 `<env>-notification-events`(표준)·DLQ `<env>-notification-events-dlq`(3번 실패하면 이동)·재처리 허용 정책(dev는 개발자별 `dev-<아이디>-notification-events`도), DB 비밀 `freshlink-<env>-notification-db`(스키마 `notification`, 사용자 `notification_app`), DLQ 경보 `<env>-notification-events-dlq-not-empty`(Discord DLQ 채널) |
+| `envs/<env>/cluster` | IRSA `freshlink-<env>-notification-service-irsa`(알림 큐 받기·지우기만), inventory·order IRSA에 알림 큐 `SendMessage`, ESO가 새 DB 비밀을 읽는다, root에 새 IRSA ARN |
+
+비용: 경보 1개 환경당 월 0.10 USD, 비밀 1개 환경당 월 0.40 USD. 큐는 무료 한도 안이다. 파드 1개(CPU 100m, 메모리 448Mi)는 지금 노드 2대 안에 들어간다(gitops README 8장).
+
+**1) 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell(창 1)에서 친다.
+
+```powershell
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity          # "user/sesac-c2"가 나오면 성공
+
+terraform "-chdir=global" init "-backend-config=../backend.hcl"
+terraform "-chdir=global" apply
+#   "Plan: 2 to add, 2 to change, 0 to destroy." (ECR·수명 주기 규칙 추가, CI Role 신뢰 정책·푸시 권한 변경)를 보고 yes
+
+terraform "-chdir=envs/dev/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/dev/persistent" apply
+#   "Plan: 12 to add, 0 to change, 0 to destroy." (큐 3종 × 세트 3개[dev-, dev-taewoo-, dev-kyungwoo-], 비밀·비밀 버전, 경보)를 보고 yes
+
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   "Plan: 6 to add, 0 to change, 0 to destroy." (큐 3종, 비밀·비밀 버전, 경보)를 보고 yes
+```
+
+숫자가 다르거나 `destroy`가 1 이상이면 no 하고 스레드에 붙여 넣는다.
+
+**2) DB 스키마·사용자 (RDS가 켜져 있을 때, dev 평일 09:00–21:00).** 창 2를 열어 포트 포워딩을 켠다.
+
+```powershell
+cd C:\fresh-link\repos\infra
+$env:AWS_PROFILE = "freshlink-admin"
+powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1
+#   "Waiting for connections..."가 나오면 성공
+```
+
+창 1에서 친다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\db-init.ps1
+#   마지막에 inventory, member, notification, orders 네 줄과 inventory_app, member_app, notification_app, order_app 네 줄이 나오면 성공
+```
+
+창 2에서 `Ctrl+C`. prod는 prod RDS가 켜져 있을 때 같은 방법으로 `db-port-forward.ps1 -Env prod -LocalPort 3308`, `db-init.ps1 -Env prod -LocalPort 3308`을 친다. prod RDS가 꺼져 있으면(`aws rds describe-db-instances --db-instance-identifier freshlink-prod-mysql --query "DBInstances[0].DBInstanceStatus"`가 `stopped`) `aws rds start-db-instance --db-instance-identifier freshlink-prod-mysql`로 켜고 `available`이 될 때까지(5~10분) 기다린다. prod는 첫 release 전에만 하면 된다.
+
+**3) 클러스터 쪽.** 사람이 할 것은 없다. 다음 클러스터 생성(dev 월요일 08:40) 때 새 IRSA와 큐 권한이 들어간다. 클러스터가 켜져 있는 날 바로 넣으려면 Actions → dev-cluster → Run workflow `create`를 한 번 돌린다(이미 있는 것은 그대로 두고 바뀐 IRSA만 고친다).
+
+**4) 확인 (dev 클러스터가 켜져 있고 notification-service 첫 배포가 끝난 뒤).**
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+kubectl get pods -n freshlink -l app.kubernetes.io/name=notification-service
+#   1/1 Running 이면 성공
+kubectl get externalsecret -n freshlink notification-service-db
+#   STATUS SecretSynced 면 성공
+aws sqs get-queue-attributes --queue-url (aws sqs get-queue-url --queue-name dev-notification-events --query QueueUrl --output text) --attribute-names ApproximateNumberOfMessages
+#   "0"이면 쌓인 쪽지 없이 잘 받고 있다
+```
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| CI가 `Not authorized to perform sts:AssumeRoleWithWebIdentity` | 1)의 `global` apply 전이다. apply 뒤 Actions에서 실패한 실행을 Re-run 한다 |
+| CI가 `gitops envs/dev/notification-service/values.yaml이 gitops에 없다` | gitops PR이 아직 안 합쳐졌다. 합친 뒤 Re-run |
+| 파드가 `CreateContainerConfigError` | DB 비밀이 아직 동기화 전이거나 ESO 권한이 없다. 클러스터를 이 PR 전에 만들었으면 dev-cluster `create`를 한 번 더 돌린다 |
+| 파드 로그 `Access denied for user 'notification_app'` | 2)의 db-init을 아직 안 했다 |
+| 파드 로그 `QueueDoesNotExist` 또는 `AccessDenied ... ReceiveMessage` | persistent apply 전이거나 새 IRSA가 아직 없다(3) |
+| DLQ 경보가 왔다 | 4-16 재처리 순서를 따른다. 큐 이름만 `<env>-notification-events-dlq` → `<env>-notification-events` |
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |

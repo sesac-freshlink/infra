@@ -105,7 +105,7 @@ resource "helm_release" "argocd_root" {
     cluster = {
       imageRegistry = "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com"
       irsaRoleArns = {
-        for svc in ["gateway", "member-service", "inventory-service", "order-service", "logistics-simulator"] :
+        for svc in ["gateway", "member-service", "inventory-service", "order-service", "logistics-simulator", "notification-service"] :
         svc => module.irsa.role_arns[svc]
       }
       env = {
