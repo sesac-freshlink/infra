@@ -126,6 +126,10 @@ resource "helm_release" "argocd_root" {
           bucket  = local.persistent.loki_bucket
           roleArn = module.irsa.role_arns["loki"]
         }
+        # Grafana CloudWatch 데이터 소스. gitops가 Grafana 서비스 계정 주석으로 단다
+        grafana = {
+          roleArn = module.irsa.role_arns["grafana"]
+        }
       }
     }
   })]

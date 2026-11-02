@@ -106,7 +106,7 @@ module "cache" {
 }
 
 # ---------------------------------------------------------------------------
-# IRSA Role: 서비스 6개 + 클러스터 부품 3개 + Loki
+# IRSA Role: 서비스 6개 + 클러스터 부품 3개 + Loki + Grafana
 # ---------------------------------------------------------------------------
 # gateway BFF(10/28): 로그인·토큰 갱신(AdminInitiateAuth)만 이 User Pool에. SignUp·ConfirmSignUp·RevokeToken·/oauth2/token은
 # IAM이 필요 없는 공개 API라 bff 클라이언트 시크릿(ExternalSecret)만 있으면 된다.
@@ -212,6 +212,26 @@ data "aws_iam_policy_document" "loki" {
   }
 }
 
+# Grafana CloudWatch 데이터 소스(멘토링 후 할 일): RDS·SQS·ALB·CloudFront 지표와 Lambda 로그를 읽기만 한다.
+# 이 API들은 자원 단위 권한을 받지 않아 "*"로 둔다(쓰기·지우기는 하나도 없다). dev·prod가 같은 계정이라 대시보드가 env로 거른다.
+data "aws_iam_policy_document" "grafana" {
+  statement {
+    sid       = "ReadMetrics"
+    actions   = ["cloudwatch:GetMetricData", "cloudwatch:ListMetrics", "cloudwatch:GetMetricStatistics", "cloudwatch:DescribeAlarms"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "ReadLogs"
+    actions   = ["logs:StartQuery", "logs:StopQuery", "logs:GetQueryResults", "logs:DescribeLogGroups", "logs:GetLogEvents", "logs:GetLogGroupFields"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "FindResourcesByTag" # 대시보드가 Environment·클러스터 태그로 이 환경의 ALB·CloudFront를 찾는다
+    actions   = ["tag:GetResources"]
+    resources = ["*"]
+  }
+}
+
 module "irsa" {
   source = "../../../modules/irsa"
 
@@ -271,6 +291,11 @@ module "irsa" {
       namespace       = local.observability_namespace
       service_account = "loki" # gitops platform/observability/values/loki.yaml serviceAccount.name
       policy_json     = data.aws_iam_policy_document.loki.json
+    }
+    grafana = {
+      namespace       = local.observability_namespace
+      service_account = "kube-prometheus-stack-grafana" # gitops kube-prometheus-stack 차트가 만드는 Grafana 서비스 계정(릴리스 이름-grafana)
+      policy_json     = data.aws_iam_policy_document.grafana.json
     }
   }
 }
