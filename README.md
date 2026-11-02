@@ -738,7 +738,7 @@ kubectl -n freshlink get pods -o custom-columns="NAME:.metadata.name,IMAGE:.spec
 ```powershell
 # ALB는 CloudFront에서 오는 요청만 받는다(4-10). 그래서 ALB 주소가 아니라 CloudFront 주소의 /api로 시험한다
 $base = terraform "-chdir=envs/dev/persistent" output -raw frontend_url
-$base                                 # https://xxxx.cloudfront.net 이 나오면 성공. 4-8의 3(api-origin)이 끝나 있어야 한다
+$base                                 # https://dev.getfreshlink.com 이 나오면 성공(도메인 전, 4-21 이전에는 https://xxxx.cloudfront.net). 4-8의 3(api-origin)이 끝나 있어야 한다
 
 $pool   = terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id
 $client = terraform "-chdir=envs/dev/persistent" output -raw cognito_app_client_id
@@ -807,7 +807,7 @@ terraform "-chdir=envs/dev/persistent" apply
 #   "Plan: 11 to add, 0 to change, 0 to destroy."를 보고 yes 입력 (다른 줄이 보이면 no 하고 스레드에 붙여 넣는다)
 #   CloudFront 배포가 퍼지는 데 5~10분 걸린다. "Apply complete! Resources: 11 added"가 나오면 성공
 terraform "-chdir=envs/dev/persistent" output -raw frontend_url
-#   https://xxxxxxxx.cloudfront.net 이 나오면 성공. 이 주소를 팀에 알린다
+#   https://xxxxxxxx.cloudfront.net 이 나오면 성공(처음 만들 때. 4-21로 도메인을 붙인 뒤에는 https://dev.getfreshlink.com). 이 주소를 팀에 알린다
 ```
 
 **2) frontend 레포에 배포 값 넣기.** 같은 창에서 친다. `gh auth status`가 로그인되어 있어야 한다.
@@ -1205,7 +1205,7 @@ kubectl -n freshlink port-forward svc/logistics-simulator 8085:8080
 #   브라우저에서 http://localhost:8085 → 입고 버튼. 창에서 Ctrl+C로 끝낸다
 ```
 
-**5) 프론트 release.** frontend 레포에서 1)과 같이 `dev` → `main` PR을 만들어 합친다(합치는 방식은 상관없다. 프론트는 다시 빌드한다). Actions → frontend-deploy 맨 위 줄 요약에 "prod 배포: https://....cloudfront.net"이 나오면 성공.
+**5) 프론트 release.** frontend 레포에서 1)과 같이 `dev` → `main` PR을 만들어 합친다(합치는 방식은 상관없다. 프론트는 다시 빌드한다). Actions → frontend-deploy 맨 위 줄 요약에 "prod 배포: https://getfreshlink.com"이 나오면 성공(도메인을 붙이기 전에는 `https://....cloudfront.net`).
 
 **6) 시나리오 (할 일 15 완료 기준).** 5)의 prod 주소에서 dev와 같은 흐름을 따라간다: 점주 owner1 로그인(비밀번호는 4-12의 5) 비밀) → 재고 화면, 새 메일로 손님 가입 → 상품 목록 → 주문·결제.
 
