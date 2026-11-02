@@ -134,8 +134,9 @@ module "frontend" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  # dev 화면은 BFF로 바뀌어(10/29) 브라우저가 Cognito를 직접 부르지 않는다. CSP는 아직 Report-Only(README 4-18)
-  csp_report_only = true
+  # dev 화면은 BFF로 바뀌어(10/29) 브라우저가 Cognito를 직접 부르지 않는다.
+  # 11/2 dev 화면(로그인·결제위젯·지도·알림 SSE)에서 Report-Only 위반이 없어 실제로 막는다(README 4-18의 4)
+  csp_report_only = false
 }
 
 module "observability" {

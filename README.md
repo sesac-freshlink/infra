@@ -1637,6 +1637,8 @@ curl.exe -sI "$base/" | Select-String "strict-transport|x-content-type|x-frame|r
 
 **4) dev 실제로 막기.** 3)의 표가 모두 끝나면 `envs/dev/persistent/main.tf`의 `csp_report_only = true`를 `false`로 바꾸는 PR → 합친 뒤 1)과 같은 apply("Plan: 0 to add, 1 to change") → 2)에서 마지막 줄이 `content-security-policy:`로 바뀌면 성공. 3)의 화면을 한 번 더 지나가며 `Refused to ...`(이제 진짜로 막힌 것)가 없는지 본다.
 
+- 11/2 dev: 로그인과 쿠키(`fl_id` Path=/api, `fl_refresh`·`fl_uid` Path=/api/auth, 셋 다 Secure·HttpOnly·SameSite=Strict, `/api/auth/me` 200), 점주 화면 5개(재고·임박·주문·매출 SSE·장부), 알림 SSE, 토스 결제위젯(`payment-widget.tosspayments.com` 프레임)에서 위반이 없었다. 화면마다 `script-src 'unsafe-eval'`(묶음 파일의 `Function('')` 확인, zod가 eval 가능 여부를 보는 것) 한 줄이 나오지만 막혀도 eval 없이 동작하므로 정책에 넣지 않는다. 고객 화면 로그인 상태(카카오맵)는 dev 고객 계정이 없어 자동 확인은 못 했다. → `csp_report_only = false`로 바꿔 apply(0 add 1 change).
+
 **5) prod.** 지금 걸어도 Report-Only라 화면에 영향이 없다. prod 클러스터가 꺼져 있어도 된다.
 
 ```powershell
@@ -1682,8 +1684,8 @@ aws pricing get-products --region us-east-1 --service-code AmazonElastiCache `
 $env:AWS_PROFILE = "freshlink-admin"
 aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
 $h = terraform "-chdir=envs/dev/cluster" output -raw cache_endpoint
-kubectl run valkey-check -n freshlink --rm -it --restart=Never --image=valkey/valkey:8 -- valkey-cli -h $h -p 6379 --tls ping
-#   PONG 이 나오면 성공
+kubectl run valkey-check -n freshlink --rm -it --restart=Never --image=valkey/valkey:8.0-alpine -- valkey-cli -h $h -p 6379 --tls ping
+#   PONG 이 나오면 성공. 이미지는 8.0-alpine(기본 valkey/valkey:8 에는 CA 인증서 묶음이 없어 TLS 검증에서 실패한다)
 kubectl get externalsecret -n freshlink order-service-redis
 #   STATUS SecretSynced 면 order 파드에 REDIS_HOST·REDIS_PORT가 들어간다(gitops PR을 합친 뒤)
 ```
