@@ -36,11 +36,12 @@ locals {
   # 화면이 실제로 부르는 곳만 연다. API·로그인(BFF)·알림 SSE는 같은 주소의 /api라 'self'로 된다.
   # 구글 로그인은 Cognito 로그인 도메인으로 페이지를 옮기는 것(navigation)이라 CSP와 상관없다.
   # 토스 결제위젯: SDK가 js.tosspayments.com 스크립트를 받고, 결제 수단·약관·결제창은 *.tosspayments.com iframe이다.
-  # 카카오맵: SDK(dapi.kakao.com)가 지도 스크립트를 t1.daumcdn.net에서 더 받는다. 지도 타일은 이미지라 img-src https:로 된다.
+  # 카카오맵: SDK(dapi.kakao.com)가 지도 본체를 t1.kakaocdn.net(11/2 확인, 예: /mapjsapi/js/main/4.5.31/kakao.js)이나
+  # 예전 주소 t1.daumcdn.net에서 더 받는다. 지도 타일은 이미지라 img-src https:로 된다.
   # 점포 이미지 올리기: 브라우저가 presigned URL로 이 버킷에 PUT 한다(connect-src). 읽기는 같은 주소 /images/라 'self'.
   content_security_policy = join("; ", [
     "default-src 'self'",
-    "script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.daumcdn.net",
+    "script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.kakaocdn.net https://t1.daumcdn.net",
     join(" ", concat(["connect-src 'self' https://*.tosspayments.com ${local.bucket_regional_url}"], var.csp_extra_connect_src)),
     "frame-src https://*.tosspayments.com",
     "img-src 'self' data: https:", # 상품 이미지가 외부 주소(NCP 등)라 https 전체
