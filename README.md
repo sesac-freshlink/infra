@@ -1595,14 +1595,14 @@ prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`
 | `Content-Security-Policy-Report-Only` (`csp_report_only = false`면 `Content-Security-Policy`) | 아래 |
 
 ```text
-default-src 'self'; script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.daumcdn.net; connect-src 'self' https://*.tosspayments.com https://<프론트 버킷>.s3.ap-northeast-2.amazonaws.com [+ csp_extra_connect_src];
+default-src 'self'; script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.kakaocdn.net https://t1.daumcdn.net; connect-src 'self' https://*.tosspayments.com https://<프론트 버킷>.s3.ap-northeast-2.amazonaws.com [+ csp_extra_connect_src];
 frame-src https://*.tosspayments.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
 - dev: 화면이 BFF라(10/29) 브라우저가 Cognito를 부르지 않는다. API·로그인·알림 SSE는 모두 같은 주소의 `/api`라 `'self'`로 된다.
 - prod: 경우님 BFF 코드가 `main`에 나갈 때까지 Amplify가 `https://cognito-idp.ap-northeast-2.amazonaws.com`을 직접 부르므로 `csp_extra_connect_src`에 넣어 두었다.
 - 구글 로그인은 `freshlink-<env>-auth.auth.ap-northeast-2.amazoncognito.com`으로 **페이지를 옮기는 것**이라 CSP에 넣지 않아도 된다.
-- 카카오맵(`dapi.kakao.com`, `t1.daumcdn.net`)과 점포 이미지 올리기(프론트 버킷 주소로 presigned PUT)는 10/30에 더했다(4-20). 새로 부르는 곳이 생기면 `modules/frontend/main.tf`의 `local.content_security_policy`에 더한다.
+- 카카오맵(`dapi.kakao.com`, `t1.kakaocdn.net`, `t1.daumcdn.net`)과 점포 이미지 올리기(프론트 버킷 주소로 presigned PUT)는 10/30에 더했다(4-20). 11/2 dev enforce 뒤 지도 본체가 `t1.kakaocdn.net`에서 와서 막혀 더했다. 새로 부르는 곳이 생기면 `modules/frontend/main.tf`의 `local.content_security_policy`에 더한다.
 
 **1) dev에 Report-Only로 걸기.** `C:\fresh-link\repos\infra`에서 연 PowerShell. 이 PR이 `main`에 합쳐져 있어야 한다. 클러스터는 꺼져 있어도 된다.
 
