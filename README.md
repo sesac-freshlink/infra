@@ -1946,6 +1946,42 @@ aws sqs get-queue-attributes --queue-url (aws sqs get-queue-url --queue-name dev
 | 파드 로그 `QueueDoesNotExist` 또는 `AccessDenied ... ReceiveMessage` | persistent apply 전이거나 새 IRSA가 아직 없다(3) |
 | DLQ 경보가 왔다 | 4-16 재처리 순서를 따른다. 큐 이름만 `<env>-notification-events-dlq` → `<env>-notification-events` |
 
+### 4-23. Grafana에서 AWS 지표 보기 CloudWatch (멘토링 후 할 일, 김진아)
+
+Grafana(gitops `platform/observability`)에 CloudWatch 데이터 소스를 붙여 RDS·SQS·ALB·CloudFront 지표와 Lambda 로그를 클러스터 지표와 같은 화면에서 본다. 이 레포는 Grafana가 쓸 읽기 전용 Role만 만든다. 데이터 소스·대시보드는 gitops가 넣는다. 보는 법은 [.github 팀원 가이드 8](https://github.com/sesac-freshlink/.github/blob/main/docs/팀원-가이드/8-grafana-aws-지표.md).
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `envs/<env>/cluster` | IRSA `freshlink-<env>-grafana-irsa`(서비스 계정 `observability/kube-prometheus-stack-grafana`). 권한은 읽기만: `cloudwatch:GetMetricData`·`ListMetrics`·`GetMetricStatistics`·`DescribeAlarms`, `logs:StartQuery`·`StopQuery`·`GetQueryResults`·`DescribeLogGroups`·`GetLogEvents`·`GetLogGroupFields`, `tag:GetResources`. root 값 `cluster.observability.grafana.roleArn` |
+
+Role 자체는 무료다. 비용은 Grafana가 조회할 때 붙는 CloudWatch API 요금뿐이다(`GetMetricData` 지표 1,000개당 0.01 USD). 대시보드 한 번 열면 지표 약 20개라, 5분 새로 고침으로 하루 12시간 켜 두어도 하루 약 0.03 USD다.
+
+**1) 적용.** 클러스터 묶음만 바뀐다. persistent는 그대로다. 클러스터가 꺼져 있으면 다음 생성(dev 월요일 08:40, prod는 켜는 날) 때 저절로 들어간다. 켜져 있는 날 바로 넣으려면 PowerShell에서 친다.
+
+```powershell
+cd C:\fresh-link\repos\infra
+git checkout main
+git pull
+gh workflow run dev-cluster.yml -f env=dev -f action=create
+#   Actions → dev-cluster 실행이 초록이면 성공. 로그에 "3 added, 1 changed, 0 destroyed"(Role·정책·연결 3개 추가, root 값 1개 변경)가 보인다
+```
+
+**2) 확인.** gitops PR(데이터 소스·대시보드)이 합쳐지고 5분 뒤.
+
+```powershell
+aws eks update-kubeconfig --name freshlink-dev-eks --region ap-northeast-2
+kubectl -n observability get sa kube-prometheus-stack-grafana -o jsonpath="{.metadata.annotations.eks\.amazonaws\.com/role-arn}"
+#   arn:aws:iam::...:role/freshlink-dev-grafana-irsa 가 나오면 성공
+```
+
+그다음 Grafana를 열어(4-14의 4) 대시보드 `FreshLink > FreshLink AWS (CloudWatch)`에 그래프가 나오면 끝이다.
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| 1)의 주석이 비어 있다 | 1)을 아직 안 했다. 했는데도 비면 `kubectl -n argocd get application root -o yaml`에서 `grafana:`가 있는지 본다 |
+| 패널마다 `AccessDenied` 또는 `no valid credential sources` | Grafana 파드가 Role이 생기기 전에 떴다. `kubectl -n observability rollout restart deploy kube-prometheus-stack-grafana` |
+| 그래프는 비고 오류가 없다 | 그 시각에 지표가 없다(RDS·클러스터가 꺼져 있었다). 시간 범위를 켜져 있던 시각으로 바꾼다 |
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |
