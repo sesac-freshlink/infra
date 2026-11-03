@@ -87,36 +87,9 @@ resource "aws_cognito_user_group" "this" {
   description  = each.value
 }
 
-# 브라우저(Amplify)용 공개 클라이언트. 시크릿 없음, SRP 로그인
-resource "aws_cognito_user_pool_client" "web" {
-  name         = "${var.name_prefix}-web"
-  user_pool_id = aws_cognito_user_pool.this.id
-
-  generate_secret = false
-  explicit_auth_flows = concat(
-    ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
-    var.admin_password_auth ? ["ALLOW_ADMIN_USER_PASSWORD_AUTH"] : [],
-  )
-  prevent_user_existence_errors = "ENABLED"
-  enable_token_revocation       = true
-
-  id_token_validity      = var.id_token_validity_hours
-  access_token_validity  = var.id_token_validity_hours
-  refresh_token_validity = var.refresh_token_validity_days
-  token_validity_units {
-    id_token      = "hours"
-    access_token  = "hours"
-    refresh_token = "days"
-  }
-
-  # ID 토큰에 custom:storeId가 들어가려면 읽기 속성에 있어야 한다. 쓰기 속성에는 넣지 않는다(화면이 점포를 바꾸지 못하게)
-  read_attributes  = ["email", "email_verified", "custom:storeId"]
-  write_attributes = ["email"]
-}
-
 # ---------------------------------------------------------------------------
 # BFF: gateway가 로그인·갱신을 대신 하는 서버용 클라이언트 (10/28 결정, .github docs/인수인계/BFF.md)
-# 프론트를 다 옮길 때까지 web 클라이언트와 같이 둔다. 다 옮기면 web을 지운다.
+# 브라우저(Amplify)용 web 클라이언트는 dev·prod 프론트가 BFF로 옮겨진 뒤 11/3에 지웠다.
 # ---------------------------------------------------------------------------
 data "aws_region" "current" {}
 

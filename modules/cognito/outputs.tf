@@ -1,5 +1,5 @@
 output "user_pool_id" {
-  description = "User Pool ID (gateway issuer, member-service, frontend VITE_COGNITO_USER_POOL_ID)"
+  description = "User Pool ID (gateway issuer, member-service)"
   value       = aws_cognito_user_pool.this.id
 }
 
@@ -11,11 +11,6 @@ output "user_pool_arn" {
 output "user_pool_name" {
   description = "User Pool 이름"
   value       = aws_cognito_user_pool.this.name
-}
-
-output "app_client_id" {
-  description = "브라우저용 앱 클라이언트 ID (gateway aud 확인, frontend VITE_COGNITO_CLIENT_ID). BFF 전환 뒤 지운다"
-  value       = aws_cognito_user_pool_client.web.id
 }
 
 output "issuer_uri" {

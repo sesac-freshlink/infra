@@ -470,9 +470,11 @@ aws secretsmanager get-secret-value --secret-id freshlink-dev-seed-accounts --qu
 
 **3) 김경우·이태우에게 줄 값.** gateway·member-service 설정과 프론트 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 쓴다. 공개해도 되는 값이다.
 
+> 11/3: 브라우저용 `web` 클라이언트와 output `cognito_app_client_id`를 지웠다(BFF 전환, 4-17). 클라이언트 ID는 `cognito_bff_client_id`를 쓰고, 프론트 빌드에는 Cognito 값을 넣지 않는다. 아래 4)·4-7의 7)처럼 클라이언트로 직접 가입·토큰을 받는 시험은 4-17의 6)(bff 클라이언트 + `SECRET_HASH`)으로 한다.
+
 ```powershell
 terraform "-chdir=envs/dev/persistent" output -raw cognito_user_pool_id; ""    # ap-northeast-2_로 시작
-terraform "-chdir=envs/dev/persistent" output -raw cognito_app_client_id; ""   # 영문·숫자 26자쯤
+terraform "-chdir=envs/dev/persistent" output -raw cognito_bff_client_id; ""   # 영문·숫자 26자쯤
 terraform "-chdir=envs/dev/persistent" output -raw cognito_issuer_uri; ""      # https://cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_...
 ```
 
@@ -654,7 +656,7 @@ terraform "-chdir=envs/dev/cluster" apply "-var=nat_enabled=false"
 | 위치 | 생기는 것 |
 | --- | --- |
 | `global` | Role `freshlink-ci-ecr-push`: 서비스 레포 5개의 `dev`·`main` 브랜치 GitHub Actions만 맡을 수 있고, ECR 5개에 이미지를 올리는 권한만 있다 |
-| `envs/dev/persistent` | dev 앱 클라이언트에 `ALLOW_ADMIN_USER_PASSWORD_AUTH` (관리자 IAM 자격으로만 쓰는 로그인 방식. 아래 6)에서 시험 토큰을 받는다) |
+| `envs/dev/persistent` | dev 앱 클라이언트에 `ALLOW_ADMIN_USER_PASSWORD_AUTH` (관리자 IAM 자격으로만 쓰는 로그인 방식. 아래 6)에서 시험 토큰을 받는다. 11/3 `web` 클라이언트를 지운 뒤로는 bff 클라이언트로 받는다, 4-17의 6)) |
 | `envs/dev/cluster` | ArgoCD에 `root` Application 등록(`charts/argocd-root`). ECR 주소·IRSA Role ARN·Cognito 값을 넘기고, 나머지는 gitops `argocd/apps`가 만든다 |
 
 흐름: 서비스 레포 `dev`에 합치기 → Actions(`.github` 레포 `spring-build.yml`) 빌드·테스트 → ECR `<서비스>:<커밋 7자리>` → gitops `envs/dev/<서비스>/values.yaml` 태그 커밋 → dev ArgoCD → 파드.
@@ -733,7 +735,7 @@ kubectl -n freshlink get pods -o custom-columns="NAME:.metadata.name,IMAGE:.spec
 #   파드 8개가 READY true이고, IMAGE 끝이 :latest가 아닌 7자리면 성공
 ```
 
-**7) 할 일 10 확인: dev에서 401·403.** 같은 창에서 친다.
+**7) 할 일 10 확인: dev에서 401·403.** 같은 창에서 친다. (11/3부터 `web` 클라이언트가 없다. 아래 `Get-IdToken`은 4-17의 6)처럼 bff 클라이언트와 `SECRET_HASH`로 토큰을 받는다)
 
 ```powershell
 # ALB는 CloudFront에서 오는 요청만 받는다(4-10). 그래서 ALB 주소가 아니라 CloudFront 주소의 /api로 시험한다
@@ -818,10 +820,8 @@ $r = "sesac-freshlink/frontend"
 gh variable set DEV_FRONTEND_BUCKET          --repo $r --body (terraform "-chdir=$p" output -raw frontend_bucket)
 gh variable set DEV_FRONTEND_DISTRIBUTION_ID --repo $r --body (terraform "-chdir=$p" output -raw frontend_distribution_id)
 gh variable set DEV_FRONTEND_DEPLOY_ROLE_ARN --repo $r --body (terraform "-chdir=$p" output -raw frontend_deploy_role_arn)
-gh variable set DEV_COGNITO_USER_POOL_ID     --repo $r --body (terraform "-chdir=$p" output -raw cognito_user_pool_id)
-gh variable set DEV_COGNITO_CLIENT_ID        --repo $r --body (terraform "-chdir=$p" output -raw cognito_app_client_id)
 gh variable list --repo $r
-#   DEV_로 시작하는 줄 5개가 나오면 성공
+#   DEV_로 시작하는 줄 3개가 나오면 성공 (Cognito 값은 BFF 전환으로 프론트 빌드에서 쓰지 않는다, 11/3에 변수도 지웠다)
 ```
 
 **3) `/api/*`를 지금 클러스터의 ALB로 맞추기.** 클러스터가 있을 때만 한다. 월요일 자동 생성 때는 워크플로가 알아서 한다.
@@ -1570,6 +1570,7 @@ prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`
 1. `envs/<env>/cluster/helm.tf`의 `COGNITO_CLIENT_ID`를 `local.persistent.cognito_bff_client_id`로 바꾸는 PR → dev-cluster `create`. 이때부터 `web` 클라이언트 토큰(Amplify)은 gateway가 401로 거절한다.
 2. 프론트 `frontend-deploy.yml`의 `VITE_COGNITO_USER_POOL_ID`·`VITE_COGNITO_CLIENT_ID` 주입과 레포 변수를 지운다.
 3. 며칠 문제없으면 `modules/cognito`의 `web` 클라이언트와 output `app_client_id`·`cognito_app_client_id`, root의 `COGNITO_BFF_CLIENT_ID`(→ `COGNITO_CLIENT_ID` 하나로)를 지운다.
+   - 11/3: dev(10/29)·prod(11/3 릴리스) 전환 뒤 `web` 클라이언트·output·변수 `admin_password_auth`를 지웠다. root의 `COGNITO_BFF_CLIENT_ID`는 gateway 코드가 읽고 있어서 남겼다(합치려면 gateway 설정을 같이 바꾼다).
 
 | 증상 | 원인과 해결 |
 | --- | --- |
