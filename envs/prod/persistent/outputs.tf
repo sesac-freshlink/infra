@@ -79,13 +79,8 @@ output "schedules" {
 }
 
 output "cognito_user_pool_id" {
-  description = "prod User Pool ID (gateway issuer, member-service, frontend VITE_COGNITO_USER_POOL_ID)"
+  description = "prod User Pool ID (gateway issuer, member-service)"
   value       = module.cognito.user_pool_id
-}
-
-output "cognito_app_client_id" {
-  description = "prod 앱 클라이언트 ID (gateway aud, frontend VITE_COGNITO_CLIENT_ID)"
-  value       = module.cognito.app_client_id
 }
 
 output "cognito_user_pool_arn" {

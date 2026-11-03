@@ -1,7 +1,7 @@
 ﻿# 환경 persistent apply 결과를 GitHub에 넣는다 (할 일 14·15). 값을 손으로 옮겨 적지 않게 terraform output에서 바로 읽는다.
 #   infra 레포 Actions 비밀  AWS_<ENV>_CLUSTER_ROLE_ARN           켜고 끄기 워크플로가 맡는 Role
-#   frontend 레포 Variables  <ENV>_COGNITO_USER_POOL_ID, <ENV>_COGNITO_CLIENT_ID,
-#                            <ENV>_FRONTEND_BUCKET, <ENV>_FRONTEND_DISTRIBUTION_ID, <ENV>_FRONTEND_DEPLOY_ROLE_ARN
+#   frontend 레포 Variables  <ENV>_FRONTEND_BUCKET, <ENV>_FRONTEND_DISTRIBUTION_ID, <ENV>_FRONTEND_DEPLOY_ROLE_ARN
+#                            (Cognito 값은 BFF 전환으로 프론트 빌드에서 쓰지 않아 11/3에 뺐다)
 # 여러 번 돌려도 된다(같은 값으로 덮어쓴다).
 #
 # 준비: gh auth login 이 되어 있고 조직 sesac-freshlink 관리자 계정이어야 한다.
@@ -37,8 +37,6 @@ Invoke-Gh @("secret", "set", "AWS_${prefix}_CLUSTER_ROLE_ARN", "--repo", "$Org/i
 
 Write-Host "$Org/frontend Variables"
 $vars = [ordered]@{
-    "${prefix}_COGNITO_USER_POOL_ID"       = $out.cognito_user_pool_id.value
-    "${prefix}_COGNITO_CLIENT_ID"          = $out.cognito_app_client_id.value
     "${prefix}_FRONTEND_BUCKET"            = $out.frontend_bucket.value
     "${prefix}_FRONTEND_DISTRIBUTION_ID"   = $out.frontend_distribution_id.value
     "${prefix}_FRONTEND_DEPLOY_ROLE_ARN"   = $out.frontend_deploy_role_arn.value
@@ -49,4 +47,4 @@ foreach ($k in $vars.Keys) {
 }
 
 Write-Host ""
-Write-Host "완료: 위 6줄이 모두 나오면 성공이다. $Env 프론트 주소: $($out.frontend_url.value)"
+Write-Host "완료: 위 4줄이 모두 나오면 성공이다. $Env 프론트 주소: $($out.frontend_url.value)"
