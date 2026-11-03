@@ -133,9 +133,9 @@ module "frontend" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  # prod 화면은 경우님 BFF 코드가 main에 나갈 때까지 Amplify가 Cognito를 직접 부른다. 그날 이 줄을 지우고 enforce로 바꾼다(README 4-18)
-  csp_report_only       = true
-  csp_extra_connect_src = ["https://cognito-idp.ap-northeast-2.amazonaws.com"]
+  # prod 화면은 BFF로 바뀌어(11/3 릴리스) 브라우저가 Cognito를 직접 부르지 않는다.
+  # dev에서 11/2 Report-Only 위반이 없어 prod도 실제로 막는다(README 4-18의 4)·5))
+  csp_report_only = false
 }
 
 # 할 일 16: Loki 로그 버킷(S3, 14일). prod 로그는 지우지 않게 force_destroy를 켜지 않는다
