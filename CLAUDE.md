@@ -81,7 +81,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 ✅ dev와 prod는 서로 참조하지 않는다. dev 루트가 prod state를 읽거나 그 반대 금지
 ✅ 다른 루트 값은 terraform_remote_state 또는 data source로 읽는다. ID·ARN 하드코딩 금지
 ✅ dev·prod는 같은 모듈을 부르고 차이는 변수 파일만. 모듈 안에 prod 전용 분기 금지
-✅ dev cluster 묶음은 매주 금요일 21:00 destroy, 월요일 08:40 apply. prod cluster는 필요한 날만 켠다. destroy를 막거나 재생성에 사람 손이 필요한 것을 넣지 않는다
+✅ dev cluster 묶음은 매주 금요일 21:00 destroy, 월요일 08:40 apply. prod cluster는 일요일 21:05 destroy, 월요일 08:40 apply (주말 포함 매일 09:00–21:00 켬). destroy를 막거나 재생성에 사람 손이 필요한 것을 넣지 않는다
 ✅ 노드 그룹 desired_size는 lifecycle ignore_changes (스케줄러 값을 apply가 되돌리지 않게)
 ✅ 리소스 이름 freshlink-<env>-<이름> (예 freshlink-dev-mysql, freshlink-prod-eks). IRSA Role freshlink-<env>-<레포>-irsa, Cognito freshlink-<env>-users, 큐 <env>-inventory-commands.fifo
 ✅ 예외: ECR·Helm 릴리스·Deployment·ServiceAccount는 레포 이름 그대로. global 공용 리소스에는 env를 붙이지 않는다
@@ -106,7 +106,7 @@ envs/
 │   └── cluster/            # dev 클러스터 묶음 루트 (금요일 삭제, 월요일 생성)
 └── prod/
     ├── persistent/         # prod 유지 묶음 루트 (dev와 같은 모듈, 변수만 다름)
-    └── cluster/            # prod 클러스터 묶음 루트 (필요한 날만)
+    └── cluster/            # prod 클러스터 묶음 루트 (일요일 밤 삭제, 월요일 아침 생성)
 modules/{network,eks,irsa,rds,messaging,frontend,ecr,observability,scheduler,cognito,budget}
 ```
 

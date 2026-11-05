@@ -76,7 +76,7 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 | `envs/dev/persistent/` | `dev/persistent/terraform.tfstate` | VPC, RDS, nano, Secrets, S3·CloudFront, SQS, Scheduler, Loki 버킷, Cognito | 그대로 둔다 (RDS·nano는 중지) |
 | `envs/dev/cluster/` | `dev/cluster/terraform.tfstate` | EKS, 노드 그룹, NAT, Helm 설치물 | 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬 |
 | `envs/prod/persistent/` | `prod/persistent/terraform.tfstate` | dev와 같은 모듈, 값만 다름(4-12) | 그대로 둔다 (RDS·nano는 평소 중지) |
-| `envs/prod/cluster/` | `prod/cluster/terraform.tfstate` | dev와 같은 모듈 | 평소 없음. 릴리스 확인·리허설·시연 날만 사람이 만들고, 매일 21:05에 지운다 |
+| `envs/prod/cluster/` | `prod/cluster/terraform.tfstate` | dev와 같은 모듈 | 일요일 밤 21:05에 지우고 월요일 08:40에 다시 만든다(주말 포함 매일 09:00–21:00 켬, 2026-11-05) |
 
 의존 방향은 `envs/<env>/cluster` → `envs/<env>/persistent` → `global` 한쪽뿐이다. dev와 prod는 서로를 참조하지 않는다. `cluster`만 지워도 DB 데이터, 이미지, 회원 계정은 남는다. 매주 `destroy`·`apply`를 반복하는 것 자체가 **"코드만으로 인프라를 언제든 똑같이 다시 만들 수 있다"를 매주 검증**하는 일이 된다.
 
@@ -97,14 +97,23 @@ Bastion 서버는 두지 않는다. 노드와 RDS 접속은 SSM Session Manager�
 
 GitHub 예약(schedule)만 쓰지 않는 이유: 2026-10-20 화 09:00 NAT 생성 예약이 아예 돌지 않았고, 전날 21:10·23:00 NAT 삭제 예약은 03:41·04:34에야 돌았다. GitHub는 붐빌 때 예약 실행을 몇 시간 늦추거나 건너뛴다. 그래서 시각은 EventBridge가 지키고, 워크플로 안의 GitHub 예약(08:50·09:25 NAT 생성, 21:05·22:35 삭제 등, 정각은 피함)은 예비로만 남긴다. 늦게 온 GitHub 예약은 한국 시각을 보고 맞지 않으면 건너뛴다: NAT 생성은 평일 8시부터 20시까지, NAT 삭제는 21시부터 다음 날 8시까지, 클러스터 생성은 월요일 8시부터 20시까지, 삭제는 금요일 21시부터 일요일까지. 같은 일이 두 번 돌아도 바뀌는 것이 없다(한 줄로 서서 돌고, 이미 된 상태면 변경 없음). 자세한 경위는 [트러블슈팅 기록](docs/troubleshooting/2026-10-20-nat-예약-빠짐-노드-안-붙음.md).
 
-켜고 끄기 (prod, 한국 시각). 켜는 예약은 없다. 필요한 날 사람이 dev-cluster 워크플로를 `env=prod`, `create`로 돌린다(RDS·nano도 같이 켠다).
+켜고 끄기 (prod, 한국 시각). prod는 데모 환경이라 **주말 포함 매일** 09:00–21:00 켠다(2026-11-05 결정). 뼈대는 dev와 같고, 클러스터를 지우고 다시 만드는 날만 일요일 밤 → 월요일 아침이다. 사람이 손으로 켤 일은 없다(필요하면 prod-cluster 워크플로를 눌러도 된다).
 
-| 시각 | 작업 | 도구 |
-| --- | --- | --- |
-| 매일 21:00 / 23:00 | RDS·nano 중지 / 한 번 더 (+ 노드 0대) | EventBridge Scheduler |
-| 매일 21:05 / 23:05 | 클러스터 묶음 삭제 / 한 번 더 (없으면 그대로) | EventBridge Scheduler → GitHub Actions(prod-cluster) |
+| 시각 | 요일 | 작업 | 도구 |
+| --- | --- | --- | --- |
+| 08:40 | 월 | 클러스터 생성(노드 2대·NAT 포함, RDS·nano도 켬) | EventBridge Scheduler → GitHub Actions(prod-cluster) |
+| 08:50 | 화–일 | NAT 생성 | EventBridge Scheduler → GitHub Actions(prod-cluster) |
+| 09:00 | 매일 | RDS·nano 켜기 | EventBridge Scheduler |
+| 09:10 | 화–일 | 노드 그룹 2대 | EventBridge Scheduler |
+| 21:00 | 매일 / 월–토 | RDS·nano 중지 / 노드 0대 | EventBridge Scheduler |
+| 21:05 | 일 | 클러스터 묶음 삭제 | EventBridge Scheduler → GitHub Actions(prod-cluster) |
+| 21:10 | 월–토 | NAT 삭제 | EventBridge Scheduler → GitHub Actions(prod-cluster) |
+| 23:00 | 매일 | 안전 끄기: RDS·nano 중지·노드 0대 | EventBridge Scheduler |
+| 23:05 / 23:15 | 매일 / 일 | NAT가 남아 있으면 삭제 / 클러스터 삭제 한 번 더 | EventBridge Scheduler → GitHub Actions(prod-cluster) |
 
-prod 삭제는 Lambda `freshlink-prod-workflow-dispatch`가 `prod-cluster` 워크플로를 누르고, 그 워크플로가 dev-cluster 워크플로를 `env=prod`로 부른다. Lambda는 `action` 하나만 넘길 수 있어서 env를 정해 둔 입구를 따로 뒀다. 같은 일을 하는 워크플로는 dev-cluster 하나다.
+prod에는 GitHub 예약(schedule)을 두지 않는다. dev-cluster 워크플로의 "평일만" 한국 시각 검사는 GitHub 예약 실행에만 걸리고, EventBridge → Lambda가 누르는 workflow_dispatch에는 걸리지 않아 주말 prod 실행이 막히지 않는다.
+
+prod 켜고 끄기는 Lambda `freshlink-prod-workflow-dispatch`가 `prod-cluster` 워크플로를 누르고, 그 워크플로가 dev-cluster 워크플로를 `env=prod`로 부른다. Lambda는 `action` 하나만 넘길 수 있어서 env를 정해 둔 입구를 따로 뒀다. 같은 일을 하는 워크플로는 dev-cluster 하나다.
 
 이유는 [기획/기술스택과-선택이유.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%ED%9A%8D/%EA%B8%B0%EC%88%A0%EC%8A%A4%ED%83%9D%EA%B3%BC-%EC%84%A0%ED%83%9D%EC%9D%B4%EC%9C%A0.md) 3-6.
 
@@ -151,7 +160,7 @@ infra/
 - [x] 노드 그룹 일정(화·수·목·금 09:10 desired 2, 월·화·수·목 21:00 desired 0, 평일 23:00 desired 0)과 `eks:UpdateNodegroupConfig` 권한 (할 일 7)
 - [x] `modules/eks`: 노드 그룹 `scaling_config[0].desired_size`를 `lifecycle { ignore_changes }`에 넣기 (apply가 스케줄러 값을 되돌리지 않게)
 - [x] GitHub Actions `.github/workflows/dev-cluster.yml`: 월요일 클러스터 생성, 화·수·목·금 NAT 생성, 월·화·수·목 NAT 삭제, 금요일 클러스터 삭제(Ingress·PVC 먼저 정리), 매일 23:00 NAT 정리, 수동 버튼(workflow_dispatch) (할 일 7)
-- [x] prod: 같은 워크플로를 `env=prod`로(수동 버튼의 env, EventBridge용 입구 `prod-cluster.yml`). 켜기 예약 없음, 매일 21:05·23:05 클러스터 삭제, 매일 21:00·23:00 RDS·nano 중지 (할 일 14)
+- [x] prod: 같은 워크플로를 `env=prod`로(수동 버튼의 env, EventBridge용 입구 `prod-cluster.yml`). 2026-11-05부터 주말 포함 매일 09:00–21:00 켬: 월 08:40 생성, 화–일 NAT·노드 켜기, 월–토 21:00·21:10 노드·NAT 끄기, 일 21:05 삭제 (할 일 14, 3차 1-4)
 
 ## 할 일: 인증 (Cognito, C-01·C-02·C-03)
 
@@ -1019,8 +1028,8 @@ aws scheduler list-schedules --group-name freshlink-dev-workflow-dispatch --quer
 | Cognito | `freshlink-dev-users`, PowerShell 시험 토큰(`ADMIN_USER_PASSWORD_AUTH`) 허용 | `freshlink-prod-users`, 시험 토큰 없음 |
 | 콜백 URL | 없음 (Hosted UI를 쓰지 않고 화면이 SRP로 로그인한다) | 없음 |
 | 프론트 배포 | frontend `dev` 브랜치 | frontend `main` 브랜치 |
-| 켜기 | 평일 자동 (2장 표) | 사람이 dev-cluster 워크플로 `env=prod`, `create` |
-| 끄기 | 2장 표 | 매일 21:00·23:00 RDS·nano 중지, 21:05·23:05 클러스터 삭제 |
+| 켜기 | 평일 자동 (2장 표) | 주말 포함 매일 자동 09:00 (2장 표, 월요일 08:40 생성) |
+| 끄기 | 2장 표 | 매일 21:00 (2장 표, 일요일 21:05 클러스터 삭제) |
 | 지운 비밀 복구 대기 | 0일 | 7일 |
 
 - 리소스: persistent 94개(네트워크 19, RDS·nano·비밀·SSM 파라미터 19, 끄기 일정 12, 워크플로 호출 10, 워크플로 Role 4, Cognito 12, 큐 6, 프론트 11, 토스 비밀 1), cluster 46개(dev와 같다).
