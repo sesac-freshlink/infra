@@ -117,7 +117,7 @@ $customerNo = 0
 foreach ($a in $accounts) {
     $password = $previous[$a.email]
     if ($a.group -eq "CUSTOMER") { $customerNo++ }
-    # 시연용 단순 비밀번호: 비밀에 값이 없던 계정만. 점주 <접두사><storeId>, 고객 <접두사><100+순번> (예 Fresh1105-4, Fresh1105-101)
+    # 시연용 단순 비밀번호: 비밀에 값이 없던 계정만. 점주 <접두사><storeId>, 고객 <접두사><100+순번> (예 접두사 Demo- → 점주 4는 Demo-4, 첫 고객은 Demo-101)
     if ($PasswordPrefix -and -not $password) {
         if ($a.group -eq "OWNER") { $password = "$PasswordPrefix$($a.storeId)" }
         elseif ($a.group -eq "CUSTOMER") { $password = "$PasswordPrefix$(100 + $customerNo)" }
