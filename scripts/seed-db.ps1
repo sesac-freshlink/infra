@@ -15,6 +15,10 @@ param(
     [string]$Part = "all"
 )
 $ErrorActionPreference = "Stop"
+# 한글(고객 이름·닉네임)이 깨지지 않게 aws CLI 입출력을 UTF-8로 맞춘다. 없으면 Windows(cp949)에서 닉네임이 깨져 member 고유키가 겹친다
+$env:AWS_CLI_FILE_ENCODING = "UTF-8"
+$env:PYTHONUTF8 = "1"
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 # mysqlsh는 UTF-8로 출력한다. PowerShell 5.1 기본(CP949)으로 읽으면 결과 표의 한글이 깨져 보인다
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 

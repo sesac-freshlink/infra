@@ -17,9 +17,15 @@ param(
     [string]$EmailDomain = $(if ($Env -eq "prod") { "freshlink.co.kr" } else { "freshlink.test" }),
     [switch]$SetAdminPassword,
     [switch]$SetOwnerPassword,
-    [switch]$SetCustomerPassword
+    [switch]$SetCustomerPassword,
+    # 비밀에 비밀번호가 없던 점주·고객을 무작위 대신 <접두사><번호>로 만든다(점주 storeId, 고객 100+순번). 이미 있는 비밀번호는 그대로 둔다
+    [string]$PasswordPrefix
 )
 $ErrorActionPreference = "Stop"
+# 한글(고객 이름·닉네임)이 든 비밀 값을 aws CLI가 UTF-8로 읽고 쓰게 한다. 없으면 Windows(cp949)에서 "text contents could not be decoded"로 멈춘다
+$env:AWS_CLI_FILE_ENCODING = "UTF-8"
+$env:PYTHONUTF8 = "1"
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 # aws CLI를 부르고 표준 출력·오류·종료 코드를 따로 돌려준다(Windows PowerShell은 stderr를 오류로 바꿔 멈추기 때문)
 function Invoke-Aws([string[]]$AwsArgs) {
@@ -107,8 +113,15 @@ $ownerPassword = if ($SetOwnerPassword) { Read-SeedPassword "점주" } else { $n
 $customerPassword = if ($SetCustomerPassword) { Read-SeedPassword "고객" } else { $null }
 
 $result = @()
+$customerNo = 0
 foreach ($a in $accounts) {
     $password = $previous[$a.email]
+    if ($a.group -eq "CUSTOMER") { $customerNo++ }
+    # 시연용 단순 비밀번호: 비밀에 값이 없던 계정만. 점주 <접두사><storeId>, 고객 <접두사><100+순번> (예 접두사 Demo- → 점주 4는 Demo-4, 첫 고객은 Demo-101)
+    if ($PasswordPrefix -and -not $password) {
+        if ($a.group -eq "OWNER") { $password = "$PasswordPrefix$($a.storeId)" }
+        elseif ($a.group -eq "CUSTOMER") { $password = "$PasswordPrefix$(100 + $customerNo)" }
+    }
     if ($a.key -eq "admin" -and $adminPassword) { $password = $adminPassword }
     if ($a.group -eq "OWNER" -and $ownerPassword) { $password = $ownerPassword }
     if ($a.group -eq "CUSTOMER" -and $customerPassword) { $password = $customerPassword }
@@ -132,7 +145,7 @@ foreach ($a in $accounts) {
     }
 
     $p = Invoke-Aws @("cognito-idp", "admin-set-user-password", "--user-pool-id", $poolId, "--username", $a.email,
-        "--password", $password, "--permanent")
+        "--password=$password", "--permanent")   # '='로 붙인다: '-'로 시작하는 비밀번호를 aws CLI가 옵션으로 읽지 않게
     Assert-Aws $p "$($a.email) 영구 비밀번호"
 
     $g = Invoke-Aws @("cognito-idp", "admin-add-user-to-group", "--user-pool-id", $poolId, "--username", $a.email,
