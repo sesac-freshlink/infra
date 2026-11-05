@@ -34,3 +34,4 @@ modules/cost-report/.build/
 modules/dlq-alert/.build/
 modules/workflow-dispatch/.build/
 __pycache__/
+scripts/seed/backfill-*.sql

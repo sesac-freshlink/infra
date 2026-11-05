@@ -163,7 +163,7 @@ infra/
 - [x] 위 정책을 member-service IRSA Role `freshlink-<env>-member-service-irsa`에 붙이기 (EKS·IRSA를 만드는 클러스터 묶음, 할 일 7)
 - [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 반영
 - [x] 시드 스크립트 (E-12): `scripts/seed-cognito.ps1` 관리자 1·점주 3, `scripts/seed-db.ps1` 점포 3·점주 member 행·상품 30 (4-5)
-- [x] prod 데모 시드 (3차 1-1, 2026-11-05): 서울 점포 30곳(ID 4–13 문래 근처, 위도·경도), 점주 30, 가상 고객 100(`scripts/seed/prod-customers.json`, dev는 6명), 시뮬레이터용 비밀 `freshlink-<env>/simulator/customers`
+- [x] prod 데모 시드 (3차 1-1·1-4, 2026-11-05): `scripts/seed-backfill.ps1` 지난 30일 주문·원장 한 번 채우기, 서울 점포 30곳(ID 4–13 문래 근처, 위도·경도), 점주 30, 가상 고객 100(`scripts/seed/prod-customers.json`, dev는 6명), 시뮬레이터용 비밀 `freshlink-<env>/simulator/customers`
 - [x] BFF(10/28): 서버용 앱 클라이언트 `freshlink-<env>-bff`(시크릿) + 비밀 `freshlink-<env>/gateway/cognito` + gateway IRSA(`AdminInitiateAuth`) + 로그인 도메인·구글 IdP (4-17)
 - [ ] BFF 전환하는 날: gateway `COGNITO_CLIENT_ID`를 bff로, 프론트 `VITE_COGNITO_*` 주입 지우기, `web` 클라이언트 지우기 (4-17 맨 아래)
 - [ ] CloudFront 보안 헤더·CSP (4-18): Report-Only로 걸고 dev 확인 → enforce. prod는 BFF가 `main`에 나갈 때 Cognito 주소를 빼고 enforce
@@ -1195,6 +1195,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod -S
 powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -Env prod -LocalPort 3308
 #   점포 1~30이 ACTIVE·위도·경도·점주 이메일과 함께 나오고, 역할별 member 수(OWNER 30, CUSTOMER 100 이상),
 #   product_count 30, with_image 30이면 성공
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-backfill.ps1 -Env prod -LocalPort 3308
+#   지난 30일 데모 기록을 한 번만 채운다(3차 1-4): 주문 약 3,800건(픽업 완료, SIM-BF- 결제) + inventory 입고·lot·원장(INBOUND·SALE·DISPOSE)
+#   마지막 표의 orders와 payments가 같고 ledger_mismatch가 0이면 성공. 이미 채웠으면 "멈춤"이 나오고 아무것도 넣지 않는다
 #   "멈춤: 시드 SQL과 prod DB 표가 맞지 않아"면 2)의 member-service·inventory-service가 Healthy인지 먼저 본다
 ```
 
