@@ -133,6 +133,11 @@ output "seed_accounts_secret_name" {
   value       = module.cognito.seed_accounts_secret_name
 }
 
+output "simulator_customers_secret_name" {
+  description = "logistics-simulator 가상 고객 비밀 이름 (scripts/seed-cognito.ps1이 값을 넣는다)"
+  value       = aws_secretsmanager_secret.simulator_customers.name
+}
+
 output "eks_cluster_name" {
   description = "EKS 클러스터 이름 (cluster 묶음이 이 이름으로 만든다)"
   value       = local.eks_cluster_name

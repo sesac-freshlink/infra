@@ -152,3 +152,11 @@ resource "aws_secretsmanager_secret" "toss" {
   description             = "Toss Payments test keys (clientKey, secretKey)"
   recovery_window_in_days = 7
 }
+
+# logistics-simulator 매일 시나리오가 주문할 가상 고객 (3차 1-1). 값 {"customers": "<sub>:<점포>,<점포>;..."}은
+# scripts/seed-cognito.ps1이 넣는다(비밀번호 없음). 클러스터의 External Secrets가 읽어 SIMULATOR_CUSTOMERS로 넣는다.
+resource "aws_secretsmanager_secret" "simulator_customers" {
+  name                    = "${local.name_prefix}/simulator/customers"
+  description             = "logistics-simulator virtual customers (Cognito sub and favorite store IDs)"
+  recovery_window_in_days = 7
+}

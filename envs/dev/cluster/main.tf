@@ -194,6 +194,8 @@ data "aws_iam_policy_document" "external_secrets" {
       # order Valkey 주소·포트. module.cache 출력 대신 이름으로 ARN을 만든다: 비밀이 아직 없을 때(클러스터 생성 전·삭제 중)
       # 출력 값이 plan 때 정해지지 않아 modules/irsa의 for_each(policy_json != null)가 "Invalid for_each argument"로 멈춘다.
       ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.name_prefix}/order/redis-??????"],
+      # logistics-simulator 가상 고객(persistent 묶음, scripts/seed-cognito.ps1이 값을 넣는다)
+      ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.name_prefix}/simulator/customers-??????"],
     )
   }
 }

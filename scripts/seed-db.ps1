@@ -1,4 +1,4 @@
-﻿# 시드 ①③④: 점포 3개 → 점주 member 행(Cognito sub) → 점주 연결·ACTIVE, 상품 30개.
+﻿# 시드 ①③④: 점포(dev 3, prod 30, 위도·경도 포함) → 점주 member 행(Cognito sub) → 점주 연결·ACTIVE → 가상 고객 member 행, 상품 30개.
 # 테이블은 각 서비스 Flyway(V1)가 만든다. 그 전에 돌리면 무엇이 없는지 알려 주고 아무것도 넣지 않는다.
 # 여러 번 돌려도 된다. SQL은 환경마다 따로 있다: scripts\seed\<env>-member.sql, <env>-inventory.sql (prod는 dev 값을 복사하지 않는 시연용 값)
 #
@@ -24,8 +24,8 @@ if (-not (Get-Command mysqlsh -ErrorAction SilentlyContinue)) {
 
 # 시드 SQL이 쓰는 칼럼. 표에 이 칼럼이 없거나, 이 밖의 NOT NULL·기본값 없는 칼럼이 있으면 멈춘다(V1과 어긋남)
 $expected = [ordered]@{
-    "member.store"      = @("id", "store_code", "name", "address", "region", "status", "owner_member_id", "created_at", "updated_at")
-    "member.member"     = @("id", "role", "email", "created_at", "updated_at")
+    "member.store"      = @("id", "store_code", "name", "address", "region", "latitude", "longitude", "status", "owner_member_id", "created_at", "updated_at")
+    "member.member"     = @("id", "role", "email", "name", "nickname", "nickname_normalized", "region", "created_at", "updated_at")
     "inventory.product" = @("id", "product_code", "name", "category", "price")
 }
 # prod 시드는 상품 이미지 주소(inventory V5)도 넣는다. prod DB는 빈 채로 V5가 돌아 이미지가 비어 있기 때문이다
@@ -115,12 +115,35 @@ foreach ($p in $parts) {
         $raw = Get-SecretString $out.seed_accounts_secret_name.value
         # PowerShell 5.1의 ConvertFrom-Json은 JSON 배열을 한 덩어리로 내보낸다. ForEach-Object로 풀어야 계정 하나씩 고를 수 있다
         $accounts = @($raw | ConvertFrom-Json | ForEach-Object { $_ })
-        foreach ($n in 1..3) {
+        # 점주 수 = SQL에 있는 {{OWNERn_SUB}} 개수 (dev 3, prod 30)
+        $ownerCount = ([regex]::Matches($sql, "\{\{OWNER(\d+)_SUB\}\}") | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Maximum).Maximum
+        foreach ($n in 1..$ownerCount) {
             $a = $accounts | Where-Object { $_.storeId -eq "$n" } | Select-Object -First 1
             if (-not $a -or -not ($a.sub -is [string]) -or $a.sub -notmatch "^[0-9a-f-]{36}$") {
                 throw "점주 $n (storeId $n) 계정의 sub가 비밀에 없다. seed-cognito.ps1을 먼저 돌린다."
             }
             $sql = $sql.Replace("{{OWNER${n}_SUB}}", $a.sub).Replace("{{OWNER${n}_EMAIL}}", $a.email)
+        }
+
+        # 가상 고객 member 행 (role CUSTOMER). 가입 Lambda가 돌지 않으므로 여기서 넣는다. 고객은 email을 저장하지 않는다(V1)
+        $customers = @($accounts | Where-Object { $_.group -eq "CUSTOMER" })
+        if ($customers.Count -gt 0) {
+            $q = { param($v) "'" + ("$v" -replace "'", "''") + "'" }
+            $values = foreach ($c in $customers) {
+                if (-not ($c.sub -is [string]) -or $c.sub -notmatch "^[0-9a-f-]{36}$") { throw "고객 $($c.email) 의 sub가 비밀에 없다. seed-cognito.ps1을 먼저 돌린다." }
+                "  ($(& $q $c.sub), 'CUSTOMER', NULL, $(& $q $c.name), $(& $q $c.nickname), $(& $q $c.nickname.Trim().ToLowerInvariant()), 'SEOUL', NOW(6), NOW(6))"
+            }
+            $sql += @"
+
+-- 가상 고객 $($customers.Count)명 (seed-db.ps1이 seed-accounts 비밀로 만든 문장)
+START TRANSACTION;
+INSERT INTO member.member (id, role, email, name, nickname, nickname_normalized, region, created_at, updated_at) VALUES
+$($values -join ",`n")
+AS new
+ON DUPLICATE KEY UPDATE role = new.role, name = new.name, nickname = new.nickname, nickname_normalized = new.nickname_normalized, region = new.region, updated_at = new.updated_at;
+COMMIT;
+SELECT role, COUNT(*) AS members FROM member.member GROUP BY role ORDER BY role;
+"@
         }
     }
     Write-Host "== $($files[$p].sql)"
@@ -128,4 +151,5 @@ foreach ($p in $parts) {
 }
 
 Write-Host ""
-Write-Host "완료: member는 점포 1~3이 S1~S3·ACTIVE·점주 이메일과 함께, inventory는 product_count 30이 보이면 성공이다(prod는 with_image도 30)."
+Write-Host "완료: member는 점포(dev 1~3, prod 1~30)가 ACTIVE·점주 이메일과 함께, 역할별 member 수(OWNER dev 3·prod 30, CUSTOMER dev 6 이상·prod 100 이상)가,"
+Write-Host "      inventory는 product_count 30이 보이면 성공이다(prod는 with_image도 30, 점포 30곳 모두 latitude·longitude가 채워져 있다)."
