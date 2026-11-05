@@ -163,6 +163,7 @@ infra/
 - [x] 위 정책을 member-service IRSA Role `freshlink-<env>-member-service-irsa`에 붙이기 (EKS·IRSA를 만드는 클러스터 묶음, 할 일 7)
 - [ ] 출력값(User Pool ID, 앱 클라이언트 ID, issuer URI)을 `gitops`의 gateway·member-service values와 frontend 빌드 환경 변수(`VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`)에 반영
 - [x] 시드 스크립트 (E-12): `scripts/seed-cognito.ps1` 관리자 1·점주 3, `scripts/seed-db.ps1` 점포 3·점주 member 행·상품 30 (4-5)
+- [x] prod 데모 시드 (3차 1-1, 2026-11-05): 서울 점포 30곳(ID 4–13 문래 근처, 위도·경도), 점주 30, 가상 고객 100(`scripts/seed/prod-customers.json`, dev는 6명), 시뮬레이터용 비밀 `freshlink-<env>/simulator/customers`
 - [x] BFF(10/28): 서버용 앱 클라이언트 `freshlink-<env>-bff`(시크릿) + 비밀 `freshlink-<env>/gateway/cognito` + gateway IRSA(`AdminInitiateAuth`) + 로그인 도메인·구글 IdP (4-17)
 - [ ] BFF 전환하는 날: gateway `COGNITO_CLIENT_ID`를 bff로, 프론트 `VITE_COGNITO_*` 주입 지우기, `web` 클라이언트 지우기 (4-17 맨 아래)
 - [ ] CloudFront 보안 헤더·CSP (4-18): Report-Only로 걸고 dev 확인 → enforce. prod는 BFF가 `main`에 나갈 때 Cognito 주소를 빼고 enforce
@@ -1188,10 +1189,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\db-port-forward.ps1 -Env prod
 창 1에서 친다. 점주 계정(4-12의 5))을 먼저 맞춘 뒤 점포·상품을 넣는다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod -SetAdminPassword -SetOwnerPassword
-#   admin과 yeoksam·hapjeong·seongsu@freshlink.co.kr 세 점주가 나오면 성공
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod -SetAdminPassword -SetOwnerPassword -SetCustomerPassword
+#   10–15분 걸린다. 첫 표에 ADMIN 1, OWNER 30, CUSTOMER 100이 나오면 성공 (3차 1-1: 점포 30곳·가상 고객 100명)
+#   이미 있는 계정은 그대로 두고 비밀번호·그룹만 맞춘다. 비밀번호를 지금 값으로 두려면 -Set...Password를 빼고 돌린다
 powershell -ExecutionPolicy Bypass -File .\scripts\seed-db.ps1 -Env prod -LocalPort 3308
-#   점포 1·2·3이 프레시링크 역삼역점·합정점·성수점, ACTIVE, 위 점주 이메일로 나오고
+#   점포 1~30이 ACTIVE·위도·경도·점주 이메일과 함께 나오고, 역할별 member 수(OWNER 30, CUSTOMER 100 이상),
 #   product_count 30, with_image 30이면 성공
 #   "멈춤: 시드 SQL과 prod DB 표가 맞지 않아"면 2)의 member-service·inventory-service가 Healthy인지 먼저 본다
 ```

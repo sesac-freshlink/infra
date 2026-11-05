@@ -1,4 +1,7 @@
-﻿# 시드 ②: Cognito 관리자 1·점주 3 계정을 만들고 자격(이메일·비밀번호·sub·storeId)을 Secrets Manager에 넣는다.
+﻿# 시드 ②: Cognito 관리자 1·점주(dev 3, prod 30)·가상 고객(dev 6, prod 100) 계정을 만들고
+# 자격(이메일·비밀번호·sub·storeId)을 Secrets Manager 비밀 seed-accounts에 넣는다.
+# 시뮬레이터가 쓸 고객 sub·단골 점포는 비밀 <env>/simulator/customers에 따로 넣는다(비밀번호 없음, External Secrets가 읽는다).
+# 고객 목록은 scripts\seed\<env>-customers.json (이름·닉네임·이메일 앞부분·단골 점포). 가입 Lambda가 돌지 않으므로 member 행은 seed-db.ps1이 넣는다.
 # 이메일 인증 완료·영구 비밀번호로 만든다(member M5·M6). 메일은 보내지 않는다(--message-action SUPPRESS).
 # 여러 번 돌려도 된다. 이미 있는 계정은 비밀번호·그룹·storeId만 비밀 값에 맞춘다.
 #
@@ -6,13 +9,15 @@
 # 실행(infra 폴더, $env:AWS_PROFILE = "freshlink-admin"):
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1
 #   powershell -ExecutionPolicy Bypass -File .\scripts\seed-cognito.ps1 -Env prod   # prod 시연 계정 (admin·yeoksam·hapjeong·seongsu@freshlink.co.kr)
-#   ... -Env prod -SetAdminPassword -SetOwnerPassword   # 관리자·점주(3명 같은 값) 비밀번호를 외우기 쉬운 값으로 직접 정한다(화면에 묻는다. 명령 기록에 남지 않는다)
+#   ... -Env prod -SetAdminPassword -SetOwnerPassword -SetCustomerPassword   # 관리자·점주(모두 같은 값)·고객(모두 같은 값) 비밀번호를 직접 정한다(화면에 묻는다. 명령 기록에 남지 않는다)
+# prod는 계정이 131개라 10–15분 걸린다(계정마다 aws 명령 5번).
 param(
     [string]$Env = "dev",
     # dev는 예약 도메인(.test). prod는 시연 화면에 test가 보이지 않게 실제처럼 보이는 도메인을 쓴다. 메일은 보내지 않는다
     [string]$EmailDomain = $(if ($Env -eq "prod") { "freshlink.co.kr" } else { "freshlink.test" }),
     [switch]$SetAdminPassword,
-    [switch]$SetOwnerPassword
+    [switch]$SetOwnerPassword,
+    [switch]$SetCustomerPassword
 )
 $ErrorActionPreference = "Stop"
 
@@ -57,6 +62,8 @@ if ($LASTEXITCODE -ne 0 -or -not $out.cognito_user_pool_id) {
 }
 $poolId = $out.cognito_user_pool_id.value
 $secretName = $out.seed_accounts_secret_name.value
+$simSecretName = $out.simulator_customers_secret_name.value
+if (-not $simSecretName) { throw "terraform output에 simulator_customers_secret_name이 없다. infra main을 pull한 뒤 envs\$Env\persistent apply를 먼저 한다." }
 
 # 이전에 넣은 비밀 값이 있으면 비밀번호를 그대로 쓴다(다시 돌려도 비밀번호가 바뀌지 않게)
 $previous = @{}
@@ -65,16 +72,26 @@ if ($r.Code -eq 0 -and $r.Out) {
     foreach ($a in ($r.Out | ConvertFrom-Json)) { $previous[$a.email] = $a.password }
 }
 
-# 점주 이메일 앞부분. prod는 dev 값을 쓰지 않고 시연 화면에 보이는 점포 이름(scripts\seed\prod-member.sql)에 맞춘다
-$ownerNames = if ($Env -eq "prod") { @("yeoksam", "hapjeong", "seongsu") } else { @("owner1", "owner2", "owner3") }
-$accounts = @(
-    [pscustomobject]@{ key = "admin";  email = "admin@$EmailDomain";  group = "ADMIN"; storeId = $null }
-    [pscustomobject]@{ key = "owner1"; email = "$($ownerNames[0])@$EmailDomain"; group = "OWNER"; storeId = "1" }
-    [pscustomobject]@{ key = "owner2"; email = "$($ownerNames[1])@$EmailDomain"; group = "OWNER"; storeId = "2" }
-    [pscustomobject]@{ key = "owner3"; email = "$($ownerNames[2])@$EmailDomain"; group = "OWNER"; storeId = "3" }
-)
+# 점주 이메일 앞부분. 점포 n의 점주 = 목록 n번째. prod는 시연 화면에 보이는 점포 이름(scripts\seed\prod-member.sql)에 맞춘다
+$ownerNames = if ($Env -eq "prod") {
+    @("yeoksam", "hapjeong", "seongsu", "mullae", "mullaeart", "seonyuro", "mullaepark", "yangpyeong", "gucheong", "dangsan", "dorim", "ydpmarket", "yeongdeungpo", "gyodae", "jamsil", "sinchon", "magok", "jonggak", "myeongdong", "itaewon", "kondae", "nowon", "mokdong", "sadang", "sillim", "gurodigital", "cheonho", "suyu", "cheongnyangni", "bulgwang")
+} else { @("owner1", "owner2", "owner3") }
+$accounts = @([pscustomobject]@{ key = "admin"; email = "admin@$EmailDomain"; group = "ADMIN"; storeId = $null })
+for ($i = 0; $i -lt $ownerNames.Count; $i++) {
+    $accounts += [pscustomobject]@{ key = "owner$($i + 1)"; email = "$($ownerNames[$i])@$EmailDomain"; group = "OWNER"; storeId = "$($i + 1)" }
+}
 
-# 비밀번호를 사람이 정한다(-SetAdminPassword 관리자, -SetOwnerPassword 점주 3명 같은 값).
+# 가상 고객 (scripts\seed\<env>-customers.json). 이메일·이름 어디에도 test를 넣지 않는다(prod)
+$customerFile = Join-Path $PSScriptRoot "seed\$Env-customers.json"
+$customers = @(Get-Content -Raw -Encoding UTF8 $customerFile | ConvertFrom-Json | ForEach-Object { $_ })
+foreach ($c in $customers) {
+    $accounts += [pscustomobject]@{
+        key = $c.key; email = "$($c.emailLocal)@$EmailDomain"; group = "CUSTOMER"; storeId = $null
+        name = $c.name; nickname = $c.nickname; stores = @($c.stores); demo = [bool]$c.demo
+    }
+}
+
+# 비밀번호를 사람이 정한다(-SetAdminPassword 관리자, -SetOwnerPassword 점주 모두 같은 값, -SetCustomerPassword 고객 모두 같은 값).
 # 규칙은 Cognito 정책과 같다: 8자 이상, 대·소문자·숫자·특수문자 각 1개 이상
 function Read-SeedPassword([string]$who) {
     $p1 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Read-Host "$who 비밀번호" -AsSecureString)))
@@ -87,12 +104,14 @@ function Read-SeedPassword([string]$who) {
 }
 $adminPassword = if ($SetAdminPassword) { Read-SeedPassword "관리자" } else { $null }
 $ownerPassword = if ($SetOwnerPassword) { Read-SeedPassword "점주" } else { $null }
+$customerPassword = if ($SetCustomerPassword) { Read-SeedPassword "고객" } else { $null }
 
 $result = @()
 foreach ($a in $accounts) {
     $password = $previous[$a.email]
     if ($a.key -eq "admin" -and $adminPassword) { $password = $adminPassword }
     if ($a.group -eq "OWNER" -and $ownerPassword) { $password = $ownerPassword }
+    if ($a.group -eq "CUSTOMER" -and $customerPassword) { $password = $customerPassword }
     if (-not $password) { $password = New-SeedPassword }
 
     $attrs = @("Name=email,Value=$($a.email)", "Name=email_verified,Value=true")
@@ -124,7 +143,7 @@ foreach ($a in $accounts) {
         "--query", "UserAttributes[?Name=='sub'].Value | [0]", "--output", "text")
     Assert-Aws $s "$($a.email) sub 읽기"
 
-    $result += [pscustomobject]@{
+    $row = [ordered]@{
         key      = $a.key
         email    = $a.email
         password = $password
@@ -132,17 +151,31 @@ foreach ($a in $accounts) {
         storeId  = $a.storeId
         sub      = $s.Out.Trim()
     }
+    if ($a.group -eq "CUSTOMER") {
+        $row.name = $a.name; $row.nickname = $a.nickname; $row.stores = $a.stores; $row.demo = $a.demo
+    }
+    $result += [pscustomobject]$row
 }
 
 $tmp = [System.IO.Path]::GetTempFileName()
 try {
-    $json = ConvertTo-Json -InputObject @($result) -Compress
+    $json = ConvertTo-Json -InputObject @($result) -Compress -Depth 4
     [System.IO.File]::WriteAllText($tmp, $json)   # BOM 없이 저장 (aws CLI가 BOM을 값에 넣지 않게)
     $w = Invoke-Aws @("secretsmanager", "put-secret-value", "--secret-id", $secretName, "--secret-string", "file://$tmp")
     Assert-Aws $w "비밀 $secretName 저장"
+
+    # 시뮬레이터용: 고객 sub와 단골 점포만. "sub:4,7;sub:5,6" 한 줄을 customers 키에 넣는다(gitops extraSecrets → SIMULATOR_CUSTOMERS)
+    $line = ($result | Where-Object { $_.group -eq "CUSTOMER" } | ForEach-Object { "$($_.sub):$(@($_.stores) -join ',')" }) -join ";"
+    $simJson = ConvertTo-Json -InputObject ([ordered]@{ customers = $line }) -Compress
+    [System.IO.File]::WriteAllText($tmp, $simJson)
+    $w = Invoke-Aws @("secretsmanager", "put-secret-value", "--secret-id", $simSecretName, "--secret-string", "file://$tmp")
+    Assert-Aws $w "비밀 $simSecretName 저장"
 } finally {
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 }
 
-$result | Select-Object email, group, storeId, sub | Format-Table -AutoSize | Out-String | Write-Host
-Write-Host "완료: 위에 계정 4줄(ADMIN 1, OWNER 3)과 sub가 보이면 성공이다. 비밀번호는 비밀 $secretName 에 있다."
+$result | Group-Object group | Select-Object @{ n = "group"; e = { $_.Name } }, Count | Format-Table -AutoSize | Out-String | Write-Host
+$result | Where-Object { $_.group -ne "CUSTOMER" -or $_.demo } | Select-Object email, group, storeId, sub | Format-Table -AutoSize | Out-String | Write-Host
+$expect = "ADMIN 1, OWNER $($ownerNames.Count), CUSTOMER $($customers.Count)"
+Write-Host "완료: 위 첫 표에 $expect 가 보이면 성공이다. 비밀번호는 비밀 $secretName 에, 시뮬레이터용 고객 sub·단골 점포는 $simSecretName 에 있다."
+Write-Host "시연 때 로그인할 고객은 두 번째 표의 CUSTOMER 줄이다(demo)."
