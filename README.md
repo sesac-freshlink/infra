@@ -1999,6 +1999,112 @@ kubectl -n observability get sa kube-prometheus-stack-grafana -o jsonpath="{.met
 | 패널마다 `AccessDenied` 또는 `no valid credential sources` | Grafana 파드가 Role이 생기기 전에 떴다. `kubectl -n observability rollout restart deploy kube-prometheus-stack-grafana` |
 | 그래프는 비고 오류가 없다 | 그 시각에 지표가 없다(RDS·클러스터가 꺼져 있었다). 시간 범위를 켜져 있던 시각으로 바꾼다 |
 
+### 4-24. 인프라 오류를 Discord 오류 채널로 알리기 (3차 할 일, 김진아)
+
+ArgoCD 배포 실패와 AWS 인프라 오류를 Discord **오류 채널**(`freshlink_error_webhook`)로 보낸다. DLQ 채널(4-16)·배포 알림 채널(GitHub 비밀 `DEPLOY_WEBHOOK_URL`)과는 다른 채널·다른 주소다. 지금은 **prod만** 켰다. dev는 같은 모듈·값을 `envs/dev/*`에 더하면 된다.
+
+웹훅 주소는 Secrets Manager 비밀 `freshlink-prod-error-webhook`(JSON `url`) 한 곳에만 둔다. 레포(특히 공개 레포 gitops)·Terraform state·GitHub 비밀에는 없다.
+
+```mermaid
+flowchart LR
+    SM[("Secrets Manager<br/>freshlink-prod-error-webhook")]
+    CW["CloudWatch 경보<br/>RDS 3 · Lambda 1 · 노드 1 · ALB 1"] --> SNS["SNS<br/>freshlink-prod-infra-alert"]
+    CE["비용 이상 감지"] --> SNS
+    GH["켜고 끄기 워크플로 실패<br/>(aws sns publish)"] --> SNS
+    SNS --> L["Lambda<br/>freshlink-prod-infra-alert"] --> D["Discord 오류 채널"]
+    SM -. 주소 .-> L
+    SM -. "External Secrets" .-> AS["argocd-notifications-secret"] -.-> AN["ArgoCD 알림 컨트롤러"] --> D
+```
+
+| 위치 | 생기는 것 |
+| --- | --- |
+| `envs/prod/persistent` (`modules/infra-alert`) | 비밀 `freshlink-prod-error-webhook`(값 없음), SNS 주제·Lambda `freshlink-prod-infra-alert`, 경보 4개(RDS 3, 켜고 끄기 Lambda 1), 비용 이상 모니터·구독 |
+| `envs/prod/cluster` | 노드 상태 경보 1개, External Secrets가 위 비밀을 읽는 권한, ArgoCD notifications 켜기(트리거·메시지 `helm.tf`), root 값 `cluster.notifications.webhookSecretName` |
+| `scripts/sync-alb-alarm.sh` | gateway ALB 5xx 경보 1개. `dev-cluster.yml` create·api-origin이 부른다(ALB가 클러스터와 같이 바뀌어서) |
+| `dev-cluster.yml` '오류 채널 알림' | 켜고 끄기(create·destroy·NAT) 실패를 SNS로 보낸다 |
+| gitops `argocd/apps` | ExternalSecret `argocd-notifications-secret`(키 `discord-webhook-url`) |
+
+**알림 기준.** 너무 자주 울리지 않게 "잠깐 튄 값"은 무시하고 이어질 때만 울린다. 모든 경보는 지표가 없으면 정상으로 본다(밤에 RDS·노드가 꺼져도 울리지 않는다). 정상으로 돌아오면 "정상으로 돌아왔습니다"가 한 번 온다(새로 만든 경보의 첫 OK는 보내지 않는다).
+
+| 알림 | 기준 | 이유 |
+| --- | --- | --- |
+| RDS CPU | 5분 평균 80% 이상이 15분 | t4g 버스트 인스턴스라 잠깐 튀는 것은 정상 |
+| RDS 남은 저장 공간 | 2GiB 미만 (20GiB의 10%) | 줄어드는 속도가 느려 한 번이면 충분 |
+| RDS 연결 수 | 120개 이상이 10분 | db.t4g.small 최대 약 170, 평소 서비스 풀 합계 약 70~100 |
+| 켜고 끄기 Lambda 실패 | 5분에 1번이라도 | 실패하면 클러스터·NAT 일정이 아예 돌지 않는다(GitHub 토큰 만료 등) |
+| 노드 상태 검사 | 노드 EC2 상태 검사 실패가 10분 | 노드가 죽은 것. 파드만 죽은 것은 ArgoCD Degraded가 맡는다 |
+| ALB 5xx | 5분에 ALB 5xx + 서비스 5xx 합계 10개 이상 | 시연 트래픽에서 10개면 화면이 깨진 것 |
+| 비용 이상 | 이상 하나의 초과 예상 금액 5 USD 이상 | 계정 전체(dev 포함). 하루 비용 메일(4-9)보다 빨리 온다 |
+| 워크플로 실패 | create·destroy·NAT 작업이 빨간불 | 배포 알림 채널에도 결과가 가지만 오류 채널에 따로 남긴다 |
+| ArgoCD 동기화 실패 | 같은 리비전에서 한 번 | selfHeal 재시도마다 오지 않게 |
+| ArgoCD Health Degraded | Healthy → Degraded로 바뀔 때 | 파드 CrashLoop, 진행 기한 초과 |
+| ArgoCD Missing | 동기화된(Synced) 뒤 리소스가 없을 때 | 클러스터를 새로 만든 첫 몇 분(모든 앱이 Missing)은 보내지 않는다 |
+
+기준값은 `modules/infra-alert/variables.tf`(RDS), `envs/prod/cluster/main.tf`(노드), `scripts/sync-alb-alarm.sh`(ALB `THRESHOLD`), `envs/prod/cluster/helm.tf`(ArgoCD)에서 바꾼다. 알림이 너무 많으면 이 표의 숫자를 올린다.
+
+비용(월, prod): 경보 6개(ALB는 지표 2개라 0.20) 0.70 USD + 비밀 1개 0.40 USD = 약 1.1 USD. 비용 이상 감지는 무료, SNS·Lambda는 알림이 올 때만 불려 무료 한도 안이다. 시간당 과금 리소스는 없다. 경보는 기존 DLQ 경보 3개와 합쳐 prod 9개가 된다.
+
+**1) persistent 적용.** 이 PR이 `main`에 합쳐진 뒤 PowerShell에서 친다.
+
+```powershell
+cd C:\fresh-link\repos\infra
+git checkout main
+git pull
+$env:AWS_PROFILE = "freshlink-admin"
+aws sts get-caller-identity
+#   "Arn"에 freshlink-admin(관리자)이 보이면 준비 끝
+terraform "-chdir=envs/prod/persistent" init "-backend-config=../../../backend.hcl"
+terraform "-chdir=envs/prod/persistent" apply
+#   "Plan: 15 to add, 0 to change, 0 to destroy."를 보고 yes. 다른 줄(change·destroy)이 보이면 no 하고 스레드에 붙여 넣는다
+```
+
+`apply`가 `aws_ce_anomaly_monitor`에서 "Limit exceeded"로 멈추면 계정에 AWS 서비스 비용 모니터가 이미 있는 것이다. 그 ARN을 넣고 다시 apply 한다.
+
+```powershell
+aws ce get-anomaly-monitors --query "AnomalyMonitors[?MonitorDimension=='SERVICE'].MonitorArn" --output text --region us-east-1
+#   arn:aws:ce::...:anomalymonitor/... 한 줄이 나온다
+terraform "-chdir=envs/prod/persistent" apply "-var=cost_anomaly_monitor_arn=<위 ARN>"
+```
+
+**2) 웹훅 주소 넣기.** Discord 오류 채널 → 채널 편집(톱니) → **연동** → **웹후크** → `freshlink_error_webhook` → **웹후크 URL 복사**. 그다음:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\set-error-webhook.ps1 -Env prod
+#   주소를 붙여 넣고 Enter (화면에 보이지 않는다). "완료"가 두 줄 나오고 오류 채널에 시험 메시지가 오면 성공
+```
+
+**3) 클러스터 적용.** prod 클러스터가 켜져 있는 시각(09:00–21:00)에 한다. 이미 있는 클러스터에 create를 부르면 바뀐 것만 apply 하고 ALB 경보도 맞춘다.
+
+```powershell
+gh workflow run prod-cluster.yml -f action=create
+#   Actions → prod-cluster 실행이 초록이면 성공. 로그 'terraform apply'에 "1 added, 3 changed, 0 destroyed"(노드 경보 추가,
+#   External Secrets 정책·ArgoCD·root 값 변경), 요약에 "경보 freshlink-prod-alb-5xx: ALB app/k8s-..."가 보인다
+```
+
+gitops PR(ExternalSecret)도 합쳐져 있어야 ArgoCD 알림이 나간다(순서는 상관없다. 둘 다 들어가면 몇 분 안에 맞춰진다).
+
+**4) 확인.**
+
+```powershell
+aws eks update-kubeconfig --name freshlink-prod-eks --region ap-northeast-2
+kubectl -n argocd get externalsecret argocd-notifications-secret
+#   STATUS SecretSynced, READY True면 성공
+kubectl -n argocd get pods -l app.kubernetes.io/component=notifications-controller
+#   Running이면 성공
+
+# CloudWatch → SNS → Lambda → Discord 경로 시험. 1분 안에 오류 채널에 "[prod] 인프라 경보"가 오면 성공.
+# 다음 평가(5분 안)에 실제 값으로 돌아오며 "정상으로 돌아왔습니다"가 한 번 더 온다
+aws cloudwatch set-alarm-state --alarm-name freshlink-prod-rds-cpu-high --state-value ALARM --state-reason "시험"
+```
+
+| 증상 | 원인과 해결 |
+| --- | --- |
+| 시험 경보가 오지 않는다 | `aws logs tail /aws/lambda/freshlink-prod-infra-alert --since 10m`. "웹훅 주소가 없어"면 2)를 다시 한다. `HTTP Error 404`면 Discord에서 웹후크를 지웠다 → 새로 만들어 2) |
+| ExternalSecret이 `SecretSyncedError` | 3)을 아직 안 했다(External Secrets 권한). 했으면 `kubectl -n argocd describe externalsecret argocd-notifications-secret`의 이유를 스레드에 붙여 넣는다 |
+| ArgoCD 알림만 안 온다 | `kubectl -n argocd logs deploy/argocd-notifications-controller --tail 50`. `$discord-webhook-url`이 비었다면 ExternalSecret을 본다 |
+| 같은 알림이 너무 자주 온다 | 위 기준 표의 숫자를 올린 PR을 만든다 |
+| ArgoCD 메시지의 링크가 안 열린다 | 링크는 `https://localhost:8443`이다. 4-6처럼 port-forward를 켠 PC에서만 열린다 |
+
 ## 5. 팀원 계정 (그룹 `freshlink-developers`)
 
 | IAM 사용자 | 팀원 |

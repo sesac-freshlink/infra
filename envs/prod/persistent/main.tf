@@ -121,6 +121,21 @@ module "dlq_alert" {
   ]
 }
 
+# 인프라 오류(RDS·켜고 끄기 Lambda 경보, 비용 이상, 워크플로 실패)를 Discord 오류 채널로 알린다. DLQ 채널과 다른 웹훅이다.
+# 웹훅 주소는 scripts/set-error-webhook.ps1 -Env prod로 넣는다. ArgoCD 알림도 같은 비밀을 쓴다(README 4-24).
+module "infra_alert" {
+  source = "../../../modules/infra-alert"
+
+  env                     = local.env
+  name_prefix             = local.name_prefix
+  rds_instance_identifier = module.rds.db_instance_identifier
+  lambda_function_names   = [module.cluster_dispatch.function_name]
+
+  # 비용 이상 감지는 계정 전체(dev 포함)라 prod에서만 받는다
+  cost_anomaly_enabled     = true
+  cost_anomaly_monitor_arn = var.cost_anomaly_monitor_arn
+}
+
 module "frontend" {
   source = "../../../modules/frontend"
 

@@ -64,10 +64,34 @@ resource "helm_release" "argocd" {
   version          = "10.10.5"
 
   # 화면은 kubectl port-forward로 연다(README 4-6). 밖으로 여는 Ingress는 두지 않는다.
-  # 쓰지 않는 dex(SSO)·notifications는 끈다(노드 자원 절약).
+  # 쓰지 않는 dex(SSO)는 끈다(노드 자원 절약).
+  # notifications: 동기화 실패·Health Degraded·Missing을 Discord 오류 채널로 보낸다(README 4-24).
+  # 웹훅 주소는 여기·gitops에 쓰지 않는다. gitops argocd/apps가 ExternalSecret으로 Secrets Manager 값을
+  # argocd-notifications-secret(키 discord-webhook-url)에 넣는다. 그래서 차트가 그 Secret을 만들지 않게 한다.
   values = [yamlencode({
-    dex           = { enabled = false }
-    notifications = { enabled = false }
+    dex = { enabled = false }
+    notifications = {
+      enabled   = true
+      argocdUrl = "https://localhost:8443" # README 4-6 port-forward 주소. 링크는 port-forward를 켠 PC에서 열린다
+      context   = { env = "prod" }
+      secret    = { create = false }
+      notifiers = {
+        "service.webhook.discord" = yamlencode({
+          url = "$discord-webhook-url"
+          headers = [
+            { name = "Content-Type", value = "application/json" },
+            { name = "User-Agent", value = "freshlink-argocd-notifications/1.0" }, # Discord는 기본 User-Agent를 막기도 한다
+          ]
+        })
+      }
+      templates = local.argocd_notification_templates
+      triggers  = local.argocd_notification_triggers
+      # 모든 Application(root, 서비스 6개, 관측성 4개)에 건다
+      subscriptions = [{
+        recipients = ["discord"]
+        triggers   = ["on-sync-failed", "on-health-degraded", "on-missing"]
+      }]
+    }
   })]
 
   depends_on = [module.eks]
@@ -131,9 +155,86 @@ resource "helm_release" "argocd_root" {
           roleArn = module.irsa.role_arns["grafana"]
         }
       }
+      # ArgoCD 알림 웹훅(README 4-24). gitops argocd/apps가 이 비밀로 argocd-notifications-secret을 만든다
+      notifications = {
+        webhookSecretName = local.persistent.error_webhook_secret_name
+      }
     }
   })]
 
   # order-service의 Valkey 비밀이 먼저 있어야 파드가 바로 뜬다(없으면 ExternalSecret이 만들어질 때까지 기다린다)
   depends_on = [helm_release.argocd, helm_release.external_secrets, module.cache]
+}
+
+# ---------------------------------------------------------------------------
+# ArgoCD 알림 내용(README 4-24). Discord 웹훅 본문 {"content": "..."}을 toJson으로 만들어 메시지의 따옴표·줄바꿈이 JSON을 깨지 않게 한다.
+# 메시지: 환경, 앱 이름, 리비전(커밋 7자리), 이유, ArgoCD 링크.
+# ---------------------------------------------------------------------------
+locals {
+  # 공통 꼬리: 리비전·링크. operationState가 없을 수 있어 dig로 꺼낸다
+  argocd_notification_footer = <<-EOT
+    {{- $rev := dig "status" "sync" "revision" "" .app | trunc 7 -}}
+    {{- $link := printf "%s/applications/%s/%s" .context.argocdUrl .app.metadata.namespace .app.metadata.name -}}
+  EOT
+
+  argocd_notification_templates = {
+    "template.app-sync-failed" = yamlencode({
+      webhook = {
+        discord = {
+          method = "POST"
+          body   = <<-EOT
+            ${local.argocd_notification_footer}
+            {{- $msg := dig "status" "operationState" "message" "" .app | trunc 500 -}}
+            {"content": {{ printf ":x: **[%s] ArgoCD 동기화 실패** `%s`\n리비전: `%s`\n이유: %s\n<%s>" .context.env .app.metadata.name $rev $msg $link | toJson }}}
+          EOT
+        }
+      }
+    })
+    "template.app-health-degraded" = yamlencode({
+      webhook = {
+        discord = {
+          method = "POST"
+          body   = <<-EOT
+            ${local.argocd_notification_footer}
+            {{- $msg := dig "status" "health" "message" "" .app | trunc 500 -}}
+            {"content": {{ printf ":warning: **[%s] ArgoCD Health Degraded** `%s`\n리비전: `%s`\n%s\n<%s>" .context.env .app.metadata.name $rev $msg $link | toJson }}}
+          EOT
+        }
+      }
+    })
+    "template.app-missing" = yamlencode({
+      webhook = {
+        discord = {
+          method = "POST"
+          body   = <<-EOT
+            ${local.argocd_notification_footer}
+            {"content": {{ printf ":ghost: **[%s] ArgoCD Missing** `%s` 리소스가 클러스터에 없다(지워졌거나 만들지 못했다)\n리비전: `%s`\n<%s>" .context.env .app.metadata.name $rev $link | toJson }}}
+          EOT
+        }
+      }
+    })
+  }
+
+  argocd_notification_triggers = {
+    # 같은 리비전에서는 한 번만(selfHeal이 다시 시도해도 같은 실패를 되풀이해 보내지 않게)
+    "trigger.on-sync-failed" = yamlencode([{
+      description = "Application syncing has failed"
+      oncePer     = "app.status.sync.revision"
+      send        = ["app-sync-failed"]
+      when        = "app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']"
+    }])
+    # Healthy → Degraded로 바뀔 때마다. 파드가 계속 죽으면(CrashLoop) 한 번만 온다
+    "trigger.on-health-degraded" = yamlencode([{
+      description = "Application has degraded"
+      send        = ["app-health-degraded"]
+      when        = "app.status.health.status == 'Degraded'"
+    }])
+    # 클러스터를 새로 만들 때 처음 몇 분은 모든 앱이 Missing·OutOfSync라 그때는 보내지 않는다.
+    # 동기화가 끝난(Synced) 뒤 리소스가 사라졌을 때만 보낸다
+    "trigger.on-missing" = yamlencode([{
+      description = "Application resources are missing after sync"
+      send        = ["app-missing"]
+      when        = "app.status.health.status == 'Missing' and app.status.sync.status == 'Synced'"
+    }])
+  }
 }

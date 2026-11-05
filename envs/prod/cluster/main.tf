@@ -179,7 +179,7 @@ data "aws_iam_policy_document" "logistics_simulator" {
   }
 }
 
-# External Secrets Operator: 앱 DB 비밀 4개(notification 포함), 토스 키, gateway bff 클라이언트 비밀, order Valkey 주소만 읽는다(시드 계정 비밀은 읽지 않는다).
+# External Secrets Operator: 앱 DB 비밀 4개(notification 포함), 토스 키, gateway bff 클라이언트 비밀, order Valkey 주소, 가상 고객, Discord 오류 채널 웹훅만 읽는다(시드 계정 비밀은 읽지 않는다).
 data "aws_iam_policy_document" "external_secrets" {
   statement {
     sid     = "ReadAppSecrets"
@@ -194,6 +194,8 @@ data "aws_iam_policy_document" "external_secrets" {
       ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.name_prefix}/order/redis-??????"],
       # logistics-simulator 가상 고객(persistent 묶음, scripts/seed-cognito.ps1이 값을 넣는다)
       ["arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${local.name_prefix}/simulator/customers-??????"],
+      # Discord 오류 채널 웹훅 → argocd-notifications-secret (gitops argocd/apps, README 4-24)
+      [local.persistent.error_webhook_secret_arn],
     )
   }
 }
@@ -298,4 +300,26 @@ module "irsa" {
       policy_json     = data.aws_iam_policy_document.grafana.json
     }
   }
+}
+
+# ---------------------------------------------------------------------------
+# 노드 상태 경보 (README 4-24). 노드 그룹 Auto Scaling 그룹 이름이 클러스터를 만들 때마다 바뀌어 여기서 만든다.
+# 노드 EC2 상태 검사(인스턴스·시스템)가 10분 이어서 실패하면 persistent의 인프라 오류 SNS → Discord 오류 채널.
+# 밤에 노드가 0대면 지표가 없어 정상으로 본다. 파드가 죽는 것은 ArgoCD 알림(Health Degraded)이 맡는다.
+# ---------------------------------------------------------------------------
+resource "aws_cloudwatch_metric_alarm" "node_status" {
+  alarm_name          = "${local.name_prefix}-nodes-status-check-failed"
+  alarm_description   = "EKS 노드 EC2 상태 검사가 10분 이어서 실패했다. EC2 콘솔에서 그 노드를 보고, 안 돌아오면 노드를 종료해 새로 뜨게 한다(README 4-24)"
+  namespace           = "AWS/EC2"
+  metric_name         = "StatusCheckFailed"
+  dimensions          = { AutoScalingGroupName = module.eks.node_autoscaling_group_name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [local.persistent.infra_alert_topic_arn]
+  ok_actions          = [local.persistent.infra_alert_topic_arn]
 }

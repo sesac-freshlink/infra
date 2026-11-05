@@ -32,3 +32,8 @@ output "node_group_name" {
   description = "노드 그룹 이름"
   value       = aws_eks_node_group.this.node_group_name
 }
+
+output "node_autoscaling_group_name" {
+  description = "노드 그룹이 쓰는 Auto Scaling 그룹 이름(EKS가 정한다. 노드 상태 경보 차원)"
+  value       = aws_eks_node_group.this.resources[0].autoscaling_groups[0].name
+}
