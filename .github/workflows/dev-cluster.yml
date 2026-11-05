@@ -236,6 +236,11 @@ jobs:
           aws eks update-kubeconfig --name "$CLUSTER" --region "$AWS_REGION"
           scripts/sync-api-origin.sh "$TARGET_ENV" | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # 새 ALB에 5xx 경보를 맞춘다(README 4-24). 인프라 오류 알림을 켜지 않은 환경(SNS 주제 없음)은 스크립트가 건너뛴다
+      - name: ALB 5xx 경보 맞추기
+        if: steps.what.outputs.action == 'create' || (steps.what.outputs.action == 'api-origin' && steps.cluster.outputs.exists == 'true')
+        run: scripts/sync-alb-alarm.sh "$TARGET_ENV" | tee -a "$GITHUB_STEP_SUMMARY"
+
       # ---------------------------------------------------------------- NAT
       - name: NAT 만들기·지우기
         if: steps.what.outputs.action == 'nat-on' || steps.what.outputs.action == 'nat-off'
@@ -401,6 +406,24 @@ jobs:
             terraform -chdir=$ROOT force-unlock -force "$(echo "$lock" | jq -r .ID)"
             echo "이 작업이 남긴 state 잠금을 풀었다" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+      # 실패하면 Discord 오류 채널에도 알린다(README 4-24). 웹훅은 GitHub에 두지 않고, AWS 인프라 오류 SNS 주제로 보내면
+      # Lambda freshlink-<env>-infra-alert가 Secrets Manager의 주소로 보낸다. 주제가 없는 환경(dev)은 건너뛴다.
+      # AWS Role을 맡기 전에 멈춘 실패(비밀 없음 등)는 보낼 수 없어 아래 배포 알림 채널에만 간다.
+      - name: 오류 채널 알림
+        if: failure() && steps.what.outputs.action != 'skip'
+        env:
+          ACTION: ${{ steps.what.outputs.action || inputs.action }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          account=$(aws sts get-caller-identity --query Account --output text 2>/dev/null) || { echo "AWS 자격 증명이 없어 건너뛴다"; exit 0; }
+          topic="arn:aws:sns:${AWS_REGION}:${account}:freshlink-${TARGET_ENV}-infra-alert"
+          aws sns get-topic-attributes --topic-arn "$topic" >/dev/null 2>&1 || { echo "${topic}가 없어 건너뛴다"; exit 0; }
+          msg=$(jq -cn --arg env "$TARGET_ENV" --arg title "${TARGET_ENV} 클러스터 ${ACTION}" --arg url "$RUN_URL" \
+            --arg details "실패한 단계와 로그를 링크에서 본다. state 잠금이 남았으면 action=unlock" \
+            '{source: "github-actions", env: $env, title: $title, details: $details, url: $url}')
+          aws sns publish --topic-arn "$topic" --message "$msg" >/dev/null
+          echo "Discord 오류 채널로 실패를 알렸다"
 
       # 예약·수동 실행 모두 결과를 알린다(늦게 와서 건너뛴 예약은 '건너뜀'). prod-cluster.yml이 부를 때도 같다.
       # 웹훅은 조직 비밀 DEPLOY_WEBHOOK_URL (.github actions/notify). 없으면 알림만 건너뛴다

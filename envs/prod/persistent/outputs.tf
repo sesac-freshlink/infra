@@ -212,3 +212,18 @@ output "store_images_prefix" {
   description = "점포 이미지 경로 (버킷 안 images/)"
   value       = module.frontend.images_prefix
 }
+
+output "infra_alert_topic_arn" {
+  description = "인프라 오류 SNS 주제 ARN (cluster 묶음 노드 경보가 보낸다)"
+  value       = module.infra_alert.topic_arn
+}
+
+output "error_webhook_secret_name" {
+  description = "Discord 오류 채널 웹훅 비밀 이름 (scripts/set-error-webhook.ps1, ArgoCD 알림 ExternalSecret)"
+  value       = module.infra_alert.webhook_secret_name
+}
+
+output "error_webhook_secret_arn" {
+  description = "Discord 오류 채널 웹훅 비밀 ARN (cluster 묶음 External Secrets 읽기 권한)"
+  value       = module.infra_alert.webhook_secret_arn
+}

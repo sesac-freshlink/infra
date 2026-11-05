@@ -15,3 +15,9 @@ variable "domain_name" {
   type        = string
   default     = "getfreshlink.com" # 2026-10-30 Route 53에서 1년 등록(자동 갱신 끔)
 }
+
+variable "cost_anomaly_monitor_arn" {
+  description = "계정에 이미 있는 AWS 서비스 비용 이상 모니터 ARN. 비우면 새로 만든다. apply가 모니터 한도로 실패할 때만 넣는다(README 4-24)"
+  type        = string
+  default     = ""
+}
