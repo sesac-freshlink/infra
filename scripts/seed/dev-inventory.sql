@@ -1,4 +1,4 @@
--- dev 시드 ④: 상품 30개 (ID 1~30, 전 점포 동일가). 칼럼 이름은 이태우 inventory V1(product) 기준.
+-- dev 시드 ④: 상품 36개 (ID 1~30 + 시연용 신상품 31~36, 전 점포 동일가). 칼럼 이름은 이태우 inventory V1(product) 기준.
 -- 재고 lot은 넣지 않는다. logistics-simulator 입고(INBOUND)로 생긴다.
 -- 여러 번 돌려도 된다. 이미 있으면 값만 맞춘다.
 SET NAMES utf8mb4;
@@ -34,10 +34,17 @@ INSERT INTO inventory.product (id, product_code, name, category, price) VALUES
   (27, 'P027', '계란 10구', '신선식품', 4800),
   (28, 'P028', '훈제 닭가슴살 100g', '신선식품', 2900),
   (29, 'P029', '어묵탕 컵', '즉석식품', 3000),
-  (30, 'P030', '떡볶이 컵', '즉석식품', 3300)
+  (30, 'P030', '떡볶이 컵', '즉석식품', 3300),
+  -- 시연용 신상품 (11/10 추가). logistics-simulator SIMULATOR_LAUNCH_FROM·TO 기간에 점포마다 처음 입고된다
+  (31, 'P031', '말차 크림 롤케이크', '디저트', 3800),
+  (32, 'P032', '딸기 요거트 스무디 300ml', '음료', 3200),
+  (33, 'P033', '갈릭 버터 바게트', '빵', 2900),
+  (34, 'P034', '마라 볶음면 컵', '라면', 1900),
+  (35, 'P035', '고구마 라떼 250ml', '음료', 2400),
+  (36, 'P036', '김치 치즈 볶음밥', '즉석식품', 4200)
 AS new
 ON DUPLICATE KEY UPDATE product_code = new.product_code, name = new.name, category = new.category, price = new.price;
 
 COMMIT;
 
-SELECT COUNT(*) AS product_count, MIN(id) AS first_id, MAX(id) AS last_id FROM inventory.product WHERE id BETWEEN 1 AND 30;
+SELECT COUNT(*) AS product_count, MIN(id) AS first_id, MAX(id) AS last_id FROM inventory.product WHERE id BETWEEN 1 AND 36;

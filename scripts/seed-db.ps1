@@ -1,4 +1,4 @@
-﻿# 시드 ①③④: 점포(dev 3, prod 30, 위도·경도 포함) → 점주 member 행(Cognito sub) → 점주 연결·ACTIVE → 가상 고객 member 행, 상품 30개.
+﻿# 시드 ①③④: 점포(dev 3, prod 30, 위도·경도 포함) → 점주 member 행(Cognito sub) → 점주 연결·ACTIVE → 가상 고객 member 행, 상품 36개(31~36은 시연용 신상품).
 # 테이블은 각 서비스 Flyway(V1)가 만든다. 그 전에 돌리면 무엇이 없는지 알려 주고 아무것도 넣지 않는다.
 # 여러 번 돌려도 된다. SQL은 환경마다 따로 있다: scripts\seed\<env>-member.sql, <env>-inventory.sql (prod는 dev 값을 복사하지 않는 시연용 값)
 #
@@ -156,4 +156,4 @@ SELECT role, COUNT(*) AS members FROM member.member GROUP BY role ORDER BY role;
 
 Write-Host ""
 Write-Host "완료: member는 점포(dev 1~3, prod 1~30)가 ACTIVE·점주 이메일과 함께, 역할별 member 수(OWNER dev 3·prod 30, CUSTOMER dev 6 이상·prod 100 이상)가,"
-Write-Host "      inventory는 product_count 30이 보이면 성공이다(prod는 with_image도 30, 점포 30곳 모두 latitude·longitude가 채워져 있다)."
+Write-Host "      inventory는 product_count 36이 보이면 성공이다(prod는 with_image 30: 신상품 31~36은 이미지 없음, 점포 30곳 모두 latitude·longitude가 채워져 있다)."
