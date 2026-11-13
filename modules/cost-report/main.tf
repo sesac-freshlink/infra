@@ -1,4 +1,4 @@
-# 매일 아침 비용 메일: EventBridge Scheduler가 Lambda를 부르고, Lambda가 Cost Explorer에서
+# 매일 밤 23:00 비용 메일: EventBridge Scheduler가 Lambda를 부르고, Lambda가 Cost Explorer에서
 # 어제 비용·이번 달 누계·프로젝트 총 비용을 읽어 SNS 주제로 보낸다. 받는 사람은 SNS 이메일 구독이다.
 # 구독은 받는 사람이 확인 메일의 "Confirm subscription"을 한 번 눌러야 시작된다.
 
@@ -110,7 +110,7 @@ resource "aws_lambda_function" "this" {
 }
 
 # ---------------------------------------------------------------------------
-# 매일 아침 실행 (EventBridge Scheduler)
+# 매일 밤 23:00 실행 (EventBridge Scheduler)
 # ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "scheduler_assume" {
   statement {
@@ -148,7 +148,7 @@ resource "aws_iam_role_policy" "scheduler" {
 
 resource "aws_scheduler_schedule" "this" {
   name                         = local.function_name
-  description                  = "매일 아침 비용 메일"
+  description                  = "매일 밤 23:00 비용 메일(어제 UTC 하루)"
   schedule_expression          = var.schedule_cron
   schedule_expression_timezone = "Asia/Seoul"
 
