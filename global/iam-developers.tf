@@ -122,12 +122,15 @@ data "aws_iam_policy_document" "dev_access" {
     resources = ["${local.arn_prefix}:sqs:${local.region}:${local.account_id}:dev-*"]
   }
 
-  # aws eks update-kubeconfig가 dev 클러스터 주소·인증서를 읽는다. 클러스터 안 권한은 dev cluster 묶음의 access entry가 준다
-  # (observability 편집, freshlink 보기). prod 클러스터는 이름이 달라 여기 걸리지 않는다.
+  # aws eks update-kubeconfig가 클러스터 주소·인증서를 읽는다. 클러스터 안 권한은 각 cluster 묶음의 access entry가 준다
+  # (observability 편집, freshlink 보기). prod도 로그·관측성은 팀원이 직접 본다(2026-11-13, 김진아). 바꾸는 권한은 없다.
   statement {
-    sid       = "DevEksDescribe"
-    actions   = ["eks:DescribeCluster"]
-    resources = ["${local.arn_prefix}:eks:${local.region}:${local.account_id}:cluster/freshlink-dev-eks"]
+    sid     = "DevEksDescribe"
+    actions = ["eks:DescribeCluster"]
+    resources = [
+      "${local.arn_prefix}:eks:${local.region}:${local.account_id}:cluster/freshlink-dev-eks",
+      "${local.arn_prefix}:eks:${local.region}:${local.account_id}:cluster/freshlink-prod-eks",
+    ]
   }
 
   statement {
@@ -233,13 +236,16 @@ data "aws_iam_policy_document" "dev_access" {
     resources = [
       "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:*freshlink-dev-*",
       "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:*freshlink-dev-*:log-stream:*",
+      # prod 로그도 읽기만 (2026-11-13, 김진아)
+      "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:*freshlink-prod-*",
+      "${local.arn_prefix}:logs:${local.region}:${local.account_id}:log-group:*freshlink-prod-*:log-stream:*",
     ]
   }
 
   statement {
     sid       = "LogsQueryResults"
     actions   = ["logs:GetQueryResults", "logs:StopQuery", "logs:StopLiveTail"]
-    resources = ["*"] # 쿼리 ID로만 동작하고 리소스 단위 권한을 지원하지 않는다. 시작은 위에서 dev로 막힌다
+    resources = ["*"] # 쿼리 ID로만 동작하고 리소스 단위 권한을 지원하지 않는다. 시작은 위에서 dev·prod 로그로 막힌다
   }
 }
 
