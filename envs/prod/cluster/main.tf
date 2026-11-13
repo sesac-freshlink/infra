@@ -1,5 +1,5 @@
 # prod 클러스터 묶음 (할 일 14): dev 클러스터 묶음(envs/dev/cluster)과 같은 모듈·차트를 부르고 이름만 다르다.
-# 평소에는 없다. 필요한 날 dev-cluster 워크플로를 env=prod로 create 해서 만들고, destroy로 지운다(매일 21:05 자동 삭제).
+# 2026-11-13부터 계속 둔다(자동 삭제·생성 없음). 만들기·지우기는 prod-cluster 워크플로 create·destroy를 손으로 누른다.
 # 같은 환경 persistent 묶음의 값을 remote state로 읽는다(반대 방향 금지).
 
 data "aws_caller_identity" "current" {}

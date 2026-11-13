@@ -1,7 +1,8 @@
 # 클러스터 켜고 끄기 (aws-리소스-계획.md 6-5). Terraform으로 envs/<env>/cluster를 만들고 지운다. env는 dev(기본)·prod.
 # RDS·SSM 접속용 인스턴스·노드 수는 EventBridge Scheduler(envs/<env>/persistent)가 맡는다.
 # 아래 GitHub 예약은 dev만 돈다. prod는 평소 꺼 두고, 사람이 Run workflow에서 env=prod로 켜고 끈다(할 일 14).
-# prod 밤 삭제는 EventBridge(envs/prod/persistent)가 prod-cluster.yml을 부르고, 그 워크플로가 이 파일을 env=prod로 부른다.
+# prod NAT 켜고 끄기는 EventBridge(envs/prod/persistent)가 prod-cluster.yml을 부르고, 그 워크플로가 이 파일을 env=prod로 부른다.
+# prod 클러스터는 2026-11-13부터 예약으로 만들거나 지우지 않는다. 있는 클러스터에 create를 누르면 terraform apply만 한다(바뀐 IAM 등 반영).
 # 예약 작업은 UTC다. 한국 시각 - 9시간. 몇 분 늦게 돌 수 있다.
 # GitHub는 사람이 몰리는 정각(특히 UTC 00:00)에 예약 실행을 늦추거나 아예 건너뛴다(2026-10-20 화 09:00 NAT 생성이 안 돎).
 # 그래서 정각을 피하고, 꼭 돌아야 하는 NAT 생성·클러스터 삭제는 뒤에 한 번 더 돈다. 두 번 돌아도 바뀌는 것이 없다.

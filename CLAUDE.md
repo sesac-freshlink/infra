@@ -40,7 +40,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 |------|----------|--------|-----------|
 | `global/` | `global` | 두 환경 공용: ECR 5개, GitHub OIDC 공급자, Terraform state 저장소, Budgets | 그대로 둔다 |
 | `envs/<env>/persistent/` | `dev/persistent`, `prod/persistent` | VPC·서브넷, RDS, SSM 접속용 t4g.nano, Secrets Manager, S3·CloudFront, SQS, IAM, EventBridge Scheduler, Loki 로그 버킷, Cognito User Pool·트리거 Lambda | 그대로 둔다 (RDS·nano는 중지) |
-| `envs/<env>/cluster/` | `dev/cluster`, `prod/cluster` | EKS, 노드 그룹, NAT, Helm(ArgoCD, AWS Load Balancer Controller, metrics-server, External Secrets Operator) | dev: 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬. prod: 같은 워크플로를 `env=prod`로 쓴다(EventBridge용 입구 `prod-cluster.yml`). 평소 없음, 필요한 날 사람이 create, 매일 21:05·23:05 삭제. 켜기 예약은 두지 않는다(할 일 14) |
+| `envs/<env>/cluster/` | `dev/cluster`, `prod/cluster` | EKS, 노드 그룹, NAT, Helm(ArgoCD, AWS Load Balancer Controller, metrics-server, External Secrets Operator) | dev: 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬. prod: 같은 워크플로를 `env=prod`로 쓴다(EventBridge용 입구 `prod-cluster.yml`). 2026-11-13부터 클러스터를 지우지 않고 계속 둔다(생성·삭제 예약 없음). 노드·NAT·RDS만 매일 09:00–21:00 켬 |
 
 - 배포(이 레포 밖): 서비스 레포 `dev` 브랜치 push → ECR(태그 = 커밋 7자리) → gitops `envs/dev` → dev 클러스터. `main` 머지 → 다시 빌드하지 않고 같은 이미지 태그를 gitops `envs/prod`로 승격 → prod 클러스터. ECR과 서비스 CI가 맡는 GitHub OIDC Role은 두 환경 공용이다. `dev` 브랜치가 맡을 수 있는 Role에는 prod 쓰기 권한(prod 버킷 쓰기, prod terraform 실행 등)을 주지 않는다.
 - 팀원 IAM 그룹 `freshlink-developers`는 dev 리소스만 쓴다. prod는 읽기 권한도 없다.
@@ -50,7 +50,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 - 할 일 7에서 정한 것: IRSA Role은 cluster 묶음(`modules/irsa`, OIDC 공급자가 클러스터와 같이 생기고 지워진다). 켜고 끄기 워크플로 Role은 persistent 묶음 `freshlink-<env>-cluster-actions`(infra `main`만 신뢰, PowerUserAccess + `freshlink-<env>-*` IAM만). 클러스터·노드 그룹 이름은 persistent가 정하고 cluster가 remote state로 읽는다.
 - 할 일 8·9에서 정한 것: ArgoCD root Application은 cluster 묶음이 `charts/argocd-root`로 등록하고, 계정마다 다른 값(ECR 주소, 서비스 IRSA Role ARN, `AWS_REGION`·`COGNITO_ISSUER_URI`·`COGNITO_CLIENT_ID`·`COGNITO_USER_POOL_ID`)을 넘긴다. gitops는 공개 레포라 이 값을 적지 않는다. root·서비스 Application에는 finalizer를 두지 않는다(금요일 삭제 때 ArgoCD 컨트롤러를 먼저 멈춘다).
 - 할 일 13에서 정한 것: 프론트는 persistent `modules/frontend`(S3·CloudFront·배포 Role `freshlink-<env>-frontend-deploy`, frontend 레포 한 브랜치만). ALB 주소는 클러스터마다 바뀌어서 CloudFront `/api/*` 오리진은 `scripts/sync-api-origin.sh`(dev-cluster.yml create·`api-origin`)가 맞추고 Terraform은 `ignore_changes = [origin]`.
-- 할 일 14에서 정한 것: prod는 dev와 같은 모듈에 값만 다르다(README 4-12). 켜기 예약 없음(scheduler 켜기·노드 cron에 `null`을 넘겨 그 일정을 만들지 않는다. 오지 않는 날 cron은 AWS가 거부한다), RDS·nano 매일 21:00·23:00 중지, 클러스터 매일 21:05·23:05 삭제. 워크플로 Role 비밀은 환경마다 `AWS_<ENV>_CLUSTER_ROLE_ARN`.
+- 할 일 14에서 정한 것: prod는 dev와 같은 모듈에 값만 다르다(README 4-12). 켜기 예약 없음(scheduler 켜기·노드 cron에 `null`을 넘겨 그 일정을 만들지 않는다. 오지 않는 날 cron은 AWS가 거부한다), RDS·nano 매일 21:00·23:00 중지, 클러스터 매일 21:05·23:05 삭제(11/5에 일요일 삭제·월요일 생성으로, 11/13에 삭제 없음으로 바뀜). 워크플로 Role 비밀은 환경마다 `AWS_<ENV>_CLUSTER_ROLE_ARN`.
 - 할 일 15에서 정한 것: 서비스 `main` push → `.github` spring-build.yml `promote`가 합친 dev 커밋(머지 커밋의 두 번째 부모) 태그를 gitops `envs/prod`에 커밋(빌드 없음). 기준 데이터는 dev를 복사하지 않고 prod 전용 시드(`scripts/seed/prod-*.sql`, `seed-db.ps1 -Env prod`, 점포·상품만, 시연용 이름·이메일).
 - 할 일 16에서 정한 것: 관측성 AWS 쪽은 persistent `modules/observability`(Loki 로그 버킷 `freshlink-<env>-loki-logs-<계정 끝 4자리>`, 15일 수명 주기)와 cluster IRSA `loki`(ServiceAccount `observability/loki`, 그 버킷만). 버킷 이름·Role ARN은 root 값 `cluster.observability.loki`로 넘긴다. 금요일 삭제는 Prometheus 리소스를 먼저 지워야 PVC가 지워진다.
 
@@ -81,7 +81,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 ✅ dev와 prod는 서로 참조하지 않는다. dev 루트가 prod state를 읽거나 그 반대 금지
 ✅ 다른 루트 값은 terraform_remote_state 또는 data source로 읽는다. ID·ARN 하드코딩 금지
 ✅ dev·prod는 같은 모듈을 부르고 차이는 변수 파일만. 모듈 안에 prod 전용 분기 금지
-✅ dev cluster 묶음은 매주 금요일 21:00 destroy, 월요일 08:40 apply. prod cluster는 일요일 21:05 destroy, 월요일 08:40 apply (주말 포함 매일 09:00–21:00 켬). destroy를 막거나 재생성에 사람 손이 필요한 것을 넣지 않는다
+✅ dev cluster 묶음은 매주 금요일 21:00 destroy, 월요일 08:40 apply. prod cluster는 2026-11-13부터 지우지 않는다(시연 11/20까지, 노드·NAT·RDS만 매일 09:00–21:00 켬). destroy를 막거나 재생성에 사람 손이 필요한 것을 넣지 않는다
 ✅ 노드 그룹 desired_size는 lifecycle ignore_changes (스케줄러 값을 apply가 되돌리지 않게)
 ✅ 리소스 이름 freshlink-<env>-<이름> (예 freshlink-dev-mysql, freshlink-prod-eks). IRSA Role freshlink-<env>-<레포>-irsa, Cognito freshlink-<env>-users, 큐 <env>-inventory-commands.fifo
 ✅ 예외: ECR·Helm 릴리스·Deployment·ServiceAccount는 레포 이름 그대로. global 공용 리소스에는 env를 붙이지 않는다
@@ -106,7 +106,7 @@ envs/
 │   └── cluster/            # dev 클러스터 묶음 루트 (금요일 삭제, 월요일 생성)
 └── prod/
     ├── persistent/         # prod 유지 묶음 루트 (dev와 같은 모듈, 변수만 다름)
-    └── cluster/            # prod 클러스터 묶음 루트 (일요일 밤 삭제, 월요일 아침 생성)
+    └── cluster/            # prod 클러스터 묶음 루트 (2026-11-13부터 계속 둔다)
 modules/{network,eks,irsa,rds,messaging,frontend,ecr,observability,scheduler,cognito,budget}
 ```
 
