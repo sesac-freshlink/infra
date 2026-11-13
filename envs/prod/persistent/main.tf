@@ -61,7 +61,7 @@ module "scheduler" {
   stop_cron              = "cron(0 21 * * ? *)" # 매일 21:00 RDS·nano 끄기
   nodes_up_cron          = "cron(10 9 * * ? *)" # 매일 09:10 노드 2대 (08:50 NAT 뒤)
   nodes_down_cron        = "cron(0 21 * * ? *)" # 매일 21:00 노드 0대
-  nodes_safety_down_cron = "cron(0 23 * * ? *)"       # 매일 23:00 노드 0대 한 번 더
+  nodes_safety_down_cron = "cron(0 23 * * ? *)" # 매일 23:00 노드 0대 한 번 더
 }
 
 # prod NAT 일정 (주말 포함 매일). 클러스터 생성·삭제 일정은 없다(2026-11-13, 위 머리말).
