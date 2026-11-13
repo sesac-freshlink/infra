@@ -1,4 +1,4 @@
--- prod 시드 ④: 시연용 상품 30개 (ID 1~30, 전 점포 동일가)와 상품 이미지 주소.
+-- prod 시드 ④: 시연용 상품 36개 (ID 1~30 + 신상품 31~36, 전 점포 동일가)와 상품 이미지 주소(31~36은 아직 없음).
 -- dev DB를 복사하지 않고 이 파일로 넣는다. prod DB는 빈 채로 inventory V5가 돌아서 V5의 이미지 UPDATE가 아무 행도 바꾸지 못한다.
 -- 그래서 이미지 주소(V5와 같은 CU 상품 이미지, 출처는 inventory-service README)를 여기서 같이 넣는다.
 -- 재고 lot은 넣지 않는다. prod logistics-simulator 입고(INBOUND)로 생긴다.
@@ -66,10 +66,17 @@ INSERT INTO inventory.product (id, product_code, name, category, price, image_ur
   (29, 'P029', '어묵탕 컵', '즉석식품', 3000,
    'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8809265025221.jpg'),
   (30, 'P030', '떡볶이 컵', '즉석식품', 3300,
-   'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8800336393997.jpg')
+   'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8800336393997.jpg'),
+  -- 시연용 신상품 (11/10 추가). 이미지는 아직 없다(NULL, 화면은 기본 그림). logistics-simulator SIMULATOR_LAUNCH_FROM·TO 기간에 점포마다 처음 입고된다
+  (31, 'P031', '말차 크림 롤케이크', '디저트', 3800, NULL),
+  (32, 'P032', '딸기 요거트 스무디 300ml', '음료', 3200, NULL),
+  (33, 'P033', '갈릭 버터 바게트', '빵', 2900, NULL),
+  (34, 'P034', '마라 볶음면 컵', '라면', 1900, NULL),
+  (35, 'P035', '고구마 라떼 250ml', '음료', 2400, NULL),
+  (36, 'P036', '김치 치즈 볶음밥', '즉석식품', 4200, NULL)
 AS new
 ON DUPLICATE KEY UPDATE product_code = new.product_code, name = new.name, category = new.category, price = new.price, image_url = new.image_url;
 
 COMMIT;
 
-SELECT COUNT(*) AS product_count, COUNT(image_url) AS with_image, MIN(id) AS first_id, MAX(id) AS last_id FROM inventory.product WHERE id BETWEEN 1 AND 30;
+SELECT COUNT(*) AS product_count, COUNT(image_url) AS with_image, MIN(id) AS first_id, MAX(id) AS last_id FROM inventory.product WHERE id BETWEEN 1 AND 36;
