@@ -1036,7 +1036,7 @@ aws scheduler list-schedules --group-name freshlink-dev-workflow-dispatch --quer
 
 - 리소스: persistent 94개(네트워크 19, RDS·nano·비밀·SSM 파라미터 19, 끄기 일정 12, 워크플로 호출 10, 워크플로 Role 4, Cognito 12, 큐 6, 프론트 11, 토스 비밀 1), cluster 46개(dev와 같다).
 - 비용: 꺼 둔 동안은 RDS 저장 공간·비밀 6개·nano 디스크 정도로 하루 0.2 USD 안팎이다. 켠 날은 dev 하루와 같다([비용-계산.md](https://github.com/sesac-freshlink/.github/blob/main/docs/%EA%B8%B0%ED%9A%8D/%EB%B9%84%EC%9A%A9-%EA%B3%84%EC%82%B0.md)의 prod 8일).
-- 팀원 계정(`freshlink-developers`)은 prod를 읽지도 못한다. 이름·태그가 `prod`라서 5장 권한에 걸리지 않는다.
+- 팀원 계정(`freshlink-developers`)은 prod를 바꾸지 못한다. prod에서 되는 것은 로그·관측성 보기뿐이다(prod 클러스터 `observability` port-forward·`freshlink` 보기, `freshlink-prod-` 로그 그룹 읽기, 4-15).
 
 **0) 준비.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell(창 1)에서 친다.
 
@@ -1293,16 +1293,16 @@ kubectl -n observability port-forward svc/zipkin 9411:9411
 
 Grafana·Zipkin 보는 방법과 할 일 16 완료 확인 순서는 `gitops/platform/observability/README.md` 5장에 있다. prod는 dev 확인 뒤 gitops `observability.enabled.prod`를 true로 바꾸면 같은 앱이 올라간다.
 
-### 4-15. 팀원에게 dev Grafana·Zipkin 권한 주기 (QA, 김진아)
+### 4-15. 팀원에게 dev·prod Grafana·Zipkin 권한 주기 (QA, 김진아)
 
-QA에서 이태우·김경우가 Grafana·Zipkin을 직접 열 수 있게, dev 클러스터에 팀원 access entry를 넣는다. 관리자 권한은 주지 않는다.
+QA에서 이태우·김경우가 Grafana·Zipkin을 직접 열 수 있게, dev·prod 클러스터에 팀원 access entry를 넣는다. 관리자 권한은 주지 않는다.
 
 | 위치 | 생기는 것 |
 | --- | --- |
-| `global` | 팀원 정책 `freshlink-dev-access`에 `eks:DescribeCluster` (`freshlink-dev-eks`만). `aws eks update-kubeconfig`에 필요하다 |
-| `envs/dev/cluster` | access entry 2개(`freshlink-taewoo`, `freshlink-kyungwoo`)와 정책 연결 4개: `observability` 네임스페이스 `AmazonEKSEditPolicy`(port-forward), `freshlink` 네임스페이스 `AmazonEKSViewPolicy`(파드·로그 보기) |
+| `global` | 팀원 정책 `freshlink-dev-access`에 `eks:DescribeCluster` (`freshlink-dev-eks`·`freshlink-prod-eks`). `aws eks update-kubeconfig`에 필요하다 |
+| `envs/dev/cluster`, `envs/prod/cluster` | access entry 2개(`freshlink-taewoo`, `freshlink-kyungwoo`)와 정책 연결 4개: `observability` 네임스페이스 `AmazonEKSEditPolicy`(port-forward), `freshlink` 네임스페이스 `AmazonEKSViewPolicy`(파드·로그 보기) |
 
-prod 클러스터는 바꾸지 않는다(`developer_principal_arns` 기본값이 빈 목록). 클러스터를 지웠다 만들어도 access entry는 Terraform이 다시 넣는다.
+2026-11-13부터 prod도 같다(김진아 결정). `envs/prod/cluster`에 같은 access entry 2개·정책 연결 4개가 들어가고, `global` 팀원 정책에 `freshlink-prod-eks` `eks:DescribeCluster`와 `*freshlink-prod-*` 로그 그룹 읽기가 더해진다. 팀원은 prod에서도 **보기만** 한다(파드 지우기·배포·비밀 읽기는 못 한다). 클러스터를 지웠다 만들어도 access entry는 Terraform이 다시 넣는다.
 
 **1) global 적용.** 이 PR이 `main`에 합쳐진 뒤 `C:\fresh-link\repos\infra`에서 연 PowerShell에서 친다.
 
@@ -1319,6 +1319,7 @@ terraform "-chdir=global" apply
 
 1. https://github.com/sesac-freshlink/infra/actions/workflows/dev-cluster.yml → **Run workflow** → env `dev`, action `create` → **Run workflow**.
 2. 초록 체크로 끝나면 성공(이미 있는 클러스터에는 access entry 2개와 정책 연결 4개만 더해진다).
+3. prod는 같은 화면에서 env `prod`, action `create`로 한 번 더 돌린다. 켜져 있는 prod 클러스터에도 access entry 2개와 정책 연결 4개만 더해진다.
 
 **3) 확인 (팀원 PC에서, `freshlink-dev` 프로필).**
 
@@ -1332,6 +1333,8 @@ kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80
 kubectl -n argocd get pods
 #   "Forbidden"이 나오면 맞다 (다른 네임스페이스는 권한이 없다)
 ```
+
+prod는 `--name freshlink-prod-eks`로 바꿔 같은 순서로 확인한다. dev·prod를 오갈 때는 `kubectl config use-context`로 고르거나 `update-kubeconfig`를 다시 친다.
 
 ### 4-16. DLQ 알림(Discord)과 재처리 (김진아)
 
@@ -2114,7 +2117,7 @@ aws cloudwatch set-alarm-state --alarm-name freshlink-prod-rds-cpu-high --state-
 | `freshlink-kyungwoo` | 김경우 |
 | `freshlink-younghoon` | 문영훈 |
 
-`global` apply가 위 사용자 3명과 그룹을 만든다. 권한은 dev 리소스만이고 prod는 읽기 권한도 없다. 팀원의 새싹 계정(`sesac-cN`)은 관리자 권한이라, 개발할 때는 이 계정(`freshlink-dev` 프로필)을 쓴다.
+`global` apply가 위 사용자 3명과 그룹을 만든다. 권한은 dev 리소스가 중심이고, prod는 로그·관측성 보기만 된다(2026-11-13). 팀원의 새싹 계정(`sesac-cN`)은 관리자 권한이라, 개발할 때는 이 계정(`freshlink-dev` 프로필)을 쓴다.
 
 | 허용 | 범위 |
 | --- | --- |
@@ -2122,11 +2125,11 @@ aws cloudwatch set-alarm-state --alarm-name freshlink-prod-rds-cpu-high --state-
 | Secrets Manager 값 읽기 | 이름이 `freshlink-dev-`로 시작하는 비밀 |
 | Cognito User Pool·사용자·그룹 조회, 사용자 만들기·비밀번호·속성·그룹 넣기·지우기 (PC에서 member 점주 등록 시험용) | 태그 `Environment=dev`인 User Pool |
 | SSM 포트 포워딩 세션 시작·종료 | 태그 `Environment=dev`인 인스턴스. 셸 세션은 안 된다 |
-| CloudWatch Logs 읽기·Logs Insights | 이름에 `freshlink-dev-`가 들어간 로그 그룹 |
-| dev EKS: `update-kubeconfig`, `observability` 네임스페이스 편집(Grafana·Zipkin port-forward), `freshlink` 네임스페이스 보기(파드·로그) | 클러스터 `freshlink-dev-eks`만. 다른 네임스페이스·prod 클러스터는 안 된다 (4-15) |
+| CloudWatch Logs 읽기·Logs Insights | 이름에 `freshlink-dev-` 또는 `freshlink-prod-`가 들어간 로그 그룹 |
+| dev·prod EKS: `update-kubeconfig`, `observability` 네임스페이스 편집(Grafana·Zipkin port-forward), `freshlink` 네임스페이스 보기(파드·로그) | 클러스터 `freshlink-dev-eks`·`freshlink-prod-eks`. 다른 네임스페이스는 안 된다 (4-15) |
 | 본인 비밀번호·액세스 키·MFA 기기 관리 | 본인 사용자만 |
 
-CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List*`)은 리소스 단위로 좁힐 수 없어 prod까지 보이게 되므로 주지 않았다. 지표와 로그는 dev Grafana로 본다. 이름과 태그 규칙은 [`envs/README.md`](envs/README.md)에 있다.
+CloudWatch 지표(`GetMetricData`)와 큐·로그 그룹·User Pool 목록(`List*`)은 리소스 단위로 좁힐 수 없어 prod까지 보이게 되므로 주지 않았다. 지표와 로그는 Grafana(dev·prod)로 본다. 이름과 태그 규칙은 [`envs/README.md`](envs/README.md)에 있다.
 
 ### 5-1. 계정 만들어 주기 (김진아, `global` apply 뒤 한 번)
 
