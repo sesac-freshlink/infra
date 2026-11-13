@@ -142,6 +142,22 @@ data "aws_iam_policy_document" "inventory_service" {
     actions   = ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
     resources = [local.queue_notifications]
   }
+  statement {
+    sid     = "InvokeBedrockClaude" # AI 점주 비서 (11/13, docs/기능이해/AI-점주-비서.md). 모델은 gitops BEDROCK_MODEL_ID
+    actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    resources = [
+      # 교차 리전 추론 프로필 (서울 리전, 우리 계정)
+      "arn:${local.partition}:bedrock:${local.region}:${local.account_id}:inference-profile/global.anthropic.claude-sonnet-5-5",
+      "arn:${local.partition}:bedrock:${local.region}:${local.account_id}:inference-profile/global.anthropic.claude-haiku-5-5",
+      # global 프로필이 실제로 보내는 기반 모델 (리전 칸이 빈 형태 + 리전별 형태)
+      "arn:${local.partition}:bedrock:::foundation-model/anthropic.claude-sonnet-5-5",
+      "arn:${local.partition}:bedrock:*::foundation-model/anthropic.claude-sonnet-5-5",
+      "arn:${local.partition}:bedrock:::foundation-model/anthropic.claude-haiku-5-5",
+      "arn:${local.partition}:bedrock:*::foundation-model/anthropic.claude-haiku-5-5",
+      # 서울 단일 리전 대안 (국내 처리만 필요할 때)
+      "arn:${local.partition}:bedrock:${local.region}::foundation-model/anthropic.claude-sonnet-5",
+    ]
+  }
 }
 
 data "aws_iam_policy_document" "order_service" {
