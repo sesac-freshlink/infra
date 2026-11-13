@@ -48,7 +48,7 @@
 | --- | --- | --- |
 | state | S3 `freshlink-tfstate-<계정ID 끝 4자리>` | 버전 관리, 암호화, 퍼블릭 차단, HTTPS만, 지난 버전 90일 보관, `prevent_destroy` |
 | 비용 | AWS Budgets `freshlink-monthly`, 비용 이상 탐지 `freshlink-services` | 10월 160 + 11월 200 = 360 USD. 50·80·100%와 예측 100% 초과 시 메일. 크레딧은 빼고 실제 사용 금액으로 본다 |
-| 비용 메일 | Lambda `freshlink-cost-report`, SNS 주제 `freshlink-cost-report`, EventBridge Scheduler 매일 09:00 | 어제 비용·이번 달 누계·총 비용을 매일 아침 세 사람에게 보낸다 (4-9) |
+| 비용 메일 | Lambda `freshlink-cost-report`, SNS 주제 `freshlink-cost-report`, EventBridge Scheduler 매일 23:00 | 어제 비용·이번 달 누계·총 비용을 매일 밤 세 사람에게 보낸다 (4-9) |
 | 이미지 | ECR 5개 (`gateway`, `member-service`, `inventory-service`, `order-service`, `logistics-simulator`) | 태그 덮어쓰기 금지, push 때 스캔, 최근 30개 보관 |
 | CI 인증 | GitHub OIDC 공급자 | 이 공급자를 믿는 Role은 할 일 10에서 만든다 |
 | 팀원 | IAM 그룹 `freshlink-developers`, 사용자 `freshlink-taewoo`·`freshlink-kyungwoo`·`freshlink-younghoon` | dev 리소스만 (5장) |
@@ -129,7 +129,7 @@ infra/
 │   └── prod/{persistent,cluster}/
 └── modules/
     ├── budget/          # Budgets, 비용 이상 탐지, 알림 시험용 예산
-    ├── cost-report/     # 매일 아침 비용 메일 (Lambda, SNS 이메일 구독, Scheduler)
+    ├── cost-report/     # 매일 밤 23:00 비용 메일 (Lambda, SNS 이메일 구독, Scheduler)
     ├── ecr/             # 리포지토리, 보관 개수 정책
     ├── network/         # VPC, 서브넷 6개(EKS 태그), IGW, 라우팅, S3 Gateway 엔드포인트 (NAT는 cluster 묶음)
     ├── rds/             # RDS MySQL 8.4, 보안 그룹, 앱 DB 비밀 3개, SSM 접속용 nano
@@ -860,9 +860,9 @@ try { Invoke-RestMethod "$url/api/members/me" } catch { $_.Exception.Response.St
 
 브라우저로 주소를 열어 점주 시드 계정으로 로그인되면 할 일 13의 배포 부분이 끝난다.
 
-### 4-9. 매일 아침 비용 메일 (김진아)
+### 4-9. 매일 밤 비용 메일 (김진아)
 
-매일 09:00(한국 시간)에 `alert_emails`의 세 사람에게 아래 메일이 간다. 주말에도 간다.
+매일 23:00(한국 시간)에 `alert_emails`의 세 사람에게 아래 메일이 간다. 주말에도 간다.
 
 ```
 제목: [FreshLink 비용] 10/19 US$1.23 · 총 US$5.88
@@ -874,9 +874,10 @@ try { Invoke-RestMethod "$url/api/members/me" } catch { $_.Exception.Response.St
 
 | 위치 | 생기는 것 |
 | --- | --- |
-| `global` (`modules/cost-report`) | Lambda `freshlink-cost-report`(Python 3.13, Cost Explorer 읽기와 아래 주제 보내기만), SNS 주제 `freshlink-cost-report`와 메일 구독 3개, EventBridge Scheduler 일정 `freshlink-cost-report`(`cron(0 9 * * ? *)`, `Asia/Seoul`)와 그 Role, 로그 그룹(14일) |
+| `global` (`modules/cost-report`) | Lambda `freshlink-cost-report`(Python 3.13, Cost Explorer 읽기와 아래 주제 보내기만), SNS 주제 `freshlink-cost-report`와 메일 구독 3개, EventBridge Scheduler 일정 `freshlink-cost-report`(`cron(0 23 * * ? *)`, `Asia/Seoul`)와 그 Role, 로그 그룹(14일) |
 
-- Cost Explorer의 하루는 UTC다. 09:00에 보내야 어제 하루(한국 시간 어제 09:00~오늘 09:00)가 끝나 있다. Cost Explorer는 최대 하루 늦게 채워져서 어제 값은 다음 날 메일에서 조금 늘 수 있다.
+- Cost Explorer의 하루는 UTC다. 메일의 "어제"는 한국 시간 어제 09:00~오늘 09:00이다.
+- 처음에는 09:00에 보냈는데, 09:00은 UTC 00:00이라 하루가 끝나는 바로 그 순간에 읽게 돼 금액이 크게 모자랐다(2026-11-12: 메일 3.36 USD, 몇 시간 뒤 Cost Explorer 12.51 USD). 2026-11-13부터 하루가 끝나고 14시간 뒤인 23:00에 보낸다. Cost Explorer는 최대 하루 늦게 채워질 수 있어서 어제 값이 다음 날 메일에서 몇 센트 늘 수는 있다.
 - 금액은 크레딧·환불을 뺀 실제 사용 금액이다(예산과 같은 기준). 총 비용은 `monthly_budget_usd`의 첫 달 1일부터 센다.
 - 비용: Cost Explorer API 한 번에 0.01 USD, 하루 2번이라 한 달 0.6 USD쯤이다. Lambda·SNS·Scheduler는 무료 한도 안이다.
 - 받는 사람을 바꾸려면 `terraform.tfvars`의 `alert_emails`를 고치고 다시 apply한다(예산 알림도 같이 바뀐다).

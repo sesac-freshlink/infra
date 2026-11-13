@@ -20,9 +20,9 @@ variable "total_budget_usd" {
 }
 
 variable "schedule_cron" {
-  description = "보내는 시각(Asia/Seoul). Cost Explorer의 하루가 UTC라서 한국 시간 09:00 뒤여야 어제 하루가 끝나 있다"
+  description = "보내는 시각(Asia/Seoul). Cost Explorer의 하루는 UTC(한국 09:00~다음 날 09:00)이고 다 채워지는 데 몇 시간 걸려서, 하루가 끝나고 14시간 뒤인 23:00에 읽는다"
   type        = string
-  default     = "cron(0 9 * * ? *)"
+  default     = "cron(0 23 * * ? *)"
 }
 
 variable "log_retention_days" {
