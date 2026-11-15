@@ -1615,7 +1615,7 @@ prod 확인은 5-8을 `envs/prod/persistent`와 `freshlink-prod/gateway/cognito`
 
 ```text
 default-src 'self'; script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.kakaocdn.net https://t1.daumcdn.net; connect-src 'self' https://*.tosspayments.com https://<프론트 버킷>.s3.ap-northeast-2.amazonaws.com [+ csp_extra_connect_src];
-frame-src https://*.tosspayments.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+frame-src https://*.tosspayments.com https://toss.im; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
 - dev: 화면이 BFF라(10/29) 브라우저가 Cognito를 부르지 않는다. API·로그인·알림 SSE는 모두 같은 주소의 `/api`라 `'self'`로 된다.
@@ -1726,7 +1726,7 @@ order 설정 예(경우님): `spring.data.redis.host: ${REDIS_HOST}`, `spring.da
 | 버킷 안 위치 | `images/stores/{storeId}/{uuid}.jpg` (키는 member-service가 정한다) |
 | 화면에서 읽는 주소 | `/images/stores/{storeId}/{uuid}.jpg` (같은 주소라 CSP `img-src 'self'`) |
 | 올리는 방법 | member-service가 presigned PUT URL을 준다(5분, `Content-Type` 고정) → 브라우저가 그 URL로 PUT → member에 키 저장 |
-| member 권한 | IRSA `freshlink-<env>-member-service-irsa`에 `s3:PutObject` (`<버킷>/images/stores/*`만). 읽기·지우기는 없다 |
+| member 권한 | IRSA `freshlink-<env>-member-service-irsa`에 `s3:PutObject` (`<버킷>/images/stores/*`, `<버킷>/images/banners/*`만). 읽기·지우기는 없다 |
 | member에 넘기는 값 | 환경 변수 `STORE_IMAGE_BUCKET` (root 값 `cluster.env`, 모든 서비스에 들어가지만 member만 쓴다) |
 | 브라우저 PUT 허용 | 버킷 CORS: 화면 주소(도메인과 `https://<id>.cloudfront.net` 둘 다, 4-21)에서 오는 `PUT`, 헤더 `Content-Type`만. CSP `connect-src`에 버킷 주소 |
 | 배포가 지우지 않게 | frontend `frontend-deploy.yml`의 `s3 sync --delete`가 `images/*`를 건너뛴다(frontend PR) |

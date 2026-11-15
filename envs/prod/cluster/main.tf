@@ -125,6 +125,12 @@ data "aws_iam_policy_document" "member_service" {
     actions   = ["s3:PutObject"]
     resources = ["${local.persistent.frontend_bucket_arn}/${local.persistent.store_images_prefix}stores/*"]
   }
+  # 관리자 메인 배너 이미지(11/15 경우 요청): 같은 방식으로 images/banners/ 아래에만 올린다.
+  statement {
+    sid       = "PutBannerImages"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.persistent.frontend_bucket_arn}/${local.persistent.store_images_prefix}banners/*"]
+  }
 }
 
 data "aws_iam_policy_document" "inventory_service" {
