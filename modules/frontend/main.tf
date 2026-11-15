@@ -43,7 +43,7 @@ locals {
     "default-src 'self'",
     "script-src 'self' https://js.tosspayments.com https://dapi.kakao.com https://t1.kakaocdn.net https://t1.daumcdn.net",
     join(" ", concat(["connect-src 'self' https://*.tosspayments.com ${local.bucket_regional_url}"], var.csp_extra_connect_src)),
-    "frame-src https://*.tosspayments.com",
+    "frame-src https://*.tosspayments.com https://toss.im", # toss.im: 퀵계좌이체 결제창(11/15 경우 요청)
     "img-src 'self' data: https:", # 상품 이미지가 외부 주소(NCP 등)라 https 전체
     "style-src 'self' 'unsafe-inline'",
     "object-src 'none'",
