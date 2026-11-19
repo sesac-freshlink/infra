@@ -49,4 +49,14 @@ ON DUPLICATE KEY UPDATE product_code = new.product_code, name = new.name, catego
 
 COMMIT;
 
-SELECT COUNT(*) AS product_count, COUNT(brand) AS with_brand, MIN(id) AS first_id, MAX(id) AS last_id FROM inventory.product WHERE id BETWEEN 1 AND 36;
+-- 신상품 31~36 이미지 (11/19). 1~30은 inventory V5가 넣는다. prod-inventory.sql과 같은 주소다
+START TRANSACTION;
+UPDATE inventory.product SET image_url = 'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8801753108058_1.png' WHERE product_code = 'P031';
+UPDATE inventory.product SET image_url = 'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8801069424828_1.png' WHERE product_code = 'P032';
+UPDATE inventory.product SET image_url = 'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8803173000479.jpg' WHERE product_code = 'P033';
+UPDATE inventory.product SET image_url = 'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8801045512518.jpg' WHERE product_code = 'P034';
+UPDATE inventory.product SET image_url = 'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8801069419619.png' WHERE product_code = 'P035';
+UPDATE inventory.product SET image_url = 'https://tqklhszfkvzk6518638.edge.naverncp.com/product/8805684013573.jpg' WHERE product_code = 'P036';
+COMMIT;
+
+SELECT COUNT(*) AS product_count, COUNT(brand) AS with_brand, COUNT(image_url) AS with_image, MIN(id) AS first_id, MAX(id) AS last_id FROM inventory.product WHERE id BETWEEN 1 AND 36;
