@@ -40,7 +40,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 |------|----------|--------|-----------|
 | `global/` | `global` | 두 환경 공용: ECR 5개, GitHub OIDC 공급자, Terraform state 저장소, Budgets | 그대로 둔다 |
 | `envs/<env>/persistent/` | `dev/persistent`, `prod/persistent` | VPC·서브넷, RDS, SSM 접속용 t4g.nano, Secrets Manager, S3·CloudFront, SQS, IAM, EventBridge Scheduler, Loki 로그 버킷, Cognito User Pool·트리거 Lambda | 그대로 둔다 (RDS·nano는 중지) |
-| `envs/<env>/cluster/` | `dev/cluster`, `prod/cluster` | EKS, 노드 그룹, NAT, Helm(ArgoCD, AWS Load Balancer Controller, metrics-server, External Secrets Operator) | dev: 금 21:00 삭제, 월 08:40 생성, 평일 09:00~21:00만 켬. prod: 같은 워크플로를 `env=prod`로 쓴다(EventBridge용 입구 `prod-cluster.yml`). 2026-11-13부터 클러스터를 지우지 않고 계속 둔다(생성·삭제 예약 없음). 노드·NAT·RDS만 매일 09:00–21:00 켬 |
+| `envs/<env>/cluster/` | `dev/cluster`, `prod/cluster` | EKS, 노드 그룹, NAT, Helm(ArgoCD, AWS Load Balancer Controller, metrics-server, External Secrets Operator) | dev: 2026-11-23부터 꺼 둔다(예약 없음, 필요할 때 Run workflow로 create. RDS·nano 23:00 안전 끄기만 남음). prod: 같은 워크플로를 `env=prod`로 쓴다(EventBridge용 입구 `prod-cluster.yml`). 2026-11-13부터 클러스터를 지우지 않고 계속 둔다(생성·삭제 예약 없음). 노드·NAT·RDS만 매일 09:00–21:00 켬 |
 
 - 배포(이 레포 밖): 서비스 레포 `dev` 브랜치 push → ECR(태그 = 커밋 7자리) → gitops `envs/dev` → dev 클러스터. `main` 머지 → 다시 빌드하지 않고 같은 이미지 태그를 gitops `envs/prod`로 승격 → prod 클러스터. ECR과 서비스 CI가 맡는 GitHub OIDC Role은 두 환경 공용이다. `dev` 브랜치가 맡을 수 있는 Role에는 prod 쓰기 권한(prod 버킷 쓰기, prod terraform 실행 등)을 주지 않는다.
 - 팀원 IAM 그룹 `freshlink-developers`는 dev 리소스만 쓴다. prod는 읽기 권한도 없다.
@@ -81,7 +81,7 @@ Respond like a caveman. No articles, no filler words, no pleasantries, no yappin
 ✅ dev와 prod는 서로 참조하지 않는다. dev 루트가 prod state를 읽거나 그 반대 금지
 ✅ 다른 루트 값은 terraform_remote_state 또는 data source로 읽는다. ID·ARN 하드코딩 금지
 ✅ dev·prod는 같은 모듈을 부르고 차이는 변수 파일만. 모듈 안에 prod 전용 분기 금지
-✅ dev cluster 묶음은 매주 금요일 21:00 destroy, 월요일 08:40 apply. prod cluster는 2026-11-13부터 지우지 않는다(시연 11/20까지, 노드·NAT·RDS만 매일 09:00–21:00 켬). destroy를 막거나 재생성에 사람 손이 필요한 것을 넣지 않는다
+✅ dev cluster 묶음은 2026-11-23부터 꺼 둔다(예약 없음, 필요할 때 Run workflow로 create. RDS·nano는 23:00 안전 끄기만 남음). prod cluster는 2026-11-13부터 지우지 않는다(시연 11/20까지, 노드·NAT·RDS만 매일 09:00–21:00 켬). destroy를 막거나 재생성에 사람 손이 필요한 것을 넣지 않는다
 ✅ 노드 그룹 desired_size는 lifecycle ignore_changes (스케줄러 값을 apply가 되돌리지 않게)
 ✅ 리소스 이름 freshlink-<env>-<이름> (예 freshlink-dev-mysql, freshlink-prod-eks). IRSA Role freshlink-<env>-<레포>-irsa, Cognito freshlink-<env>-users, 큐 <env>-inventory-commands.fifo
 ✅ 예외: ECR·Helm 릴리스·Deployment·ServiceAccount는 레포 이름 그대로. global 공용 리소스에는 env를 붙이지 않는다

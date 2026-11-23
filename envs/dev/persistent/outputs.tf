@@ -178,16 +178,6 @@ output "frontend_deploy_role_arn" {
   value       = module.frontend.deploy_role_arn
 }
 
-output "workflow_dispatch_token_secret" {
-  description = "켜고 끄기 워크플로 실행 요청에 쓰는 GitHub 토큰 비밀 이름 (README 4-11)"
-  value       = module.cluster_dispatch.token_secret_name
-}
-
-output "workflow_dispatch_function" {
-  description = "켜고 끄기 워크플로 실행 요청 Lambda 이름 (README 4-11 시험)"
-  value       = module.cluster_dispatch.function_name
-}
-
 output "loki_bucket" {
   description = "Loki 로그 버킷 이름 (cluster 묶음이 root Application에 넘긴다)"
   value       = module.observability.loki_bucket
