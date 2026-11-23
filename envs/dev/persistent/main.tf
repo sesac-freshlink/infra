@@ -4,7 +4,8 @@
 # 할 일 7: 노드 그룹 일정(평일), 켜고 끄기 워크플로가 맡는 GitHub Actions Role, 클러스터·노드 그룹 이름.
 # 할 일 13: 프론트 S3 + CloudFront(/api/* → gateway ALB) + frontend 레포 배포 Role.
 # 할 일 16: Loki 로그 버킷(S3, 14일). 클러스터를 지워도 로그가 남는다.
-# 주말에도 그대로 둔다. RDS·nano는 스케줄러가 평일 09:00에 켜고 21:00·23:00에 끈다.
+# 2026-11-23 시연이 끝나 dev는 꺼 둔다. 켜기·끄기 예약(RDS·nano·노드·클러스터·NAT)을 모두 없앴다.
+# 남은 일정은 매일 23:00 RDS·nano 안전 끄기 2개뿐이다(꺼진 RDS를 AWS가 7일 뒤 저절로 켜서).
 
 locals {
   env         = "dev"
@@ -58,23 +59,13 @@ module "scheduler" {
   eks_cluster_name        = local.eks_cluster_name
   eks_node_group_name     = local.eks_node_group_name
   enabled                 = var.scheduler_enabled
-}
 
-# 켜고 끄기 워크플로(dev-cluster.yml)를 정해진 시각에 실행한다. GitHub 예약은 몇 시간 늦거나 빠져서
-# 시각은 여기서 지킨다(2026-10-20). 워크플로 안의 GitHub 예약은 예비로 남고, 늦게 오면 시각을 보고 건너뛴다.
-# 두 번 돌아도 바뀌는 것이 없다(concurrency로 한 줄로 서고, 이미 된 상태면 변경 없음).
-module "cluster_dispatch" {
-  source = "../../../modules/workflow-dispatch"
-
-  name_prefix = local.name_prefix
-  enabled     = var.scheduler_enabled
-  schedules = {
-    create       = { cron = "cron(40 8 ? * MON *)", action = "create" }       # 월 08:40 클러스터 생성 (노드 2대·NAT 포함)
-    nat-on       = { cron = "cron(50 8 ? * TUE-FRI *)", action = "nat-on" }   # 화·수·목·금 08:50 NAT 생성 (노드 09:10보다 먼저)
-    nat-off      = { cron = "cron(10 21 ? * MON-THU *)", action = "nat-off" } # 월·화·수·목 21:10 NAT 삭제
-    destroy      = { cron = "cron(5 21 ? * FRI *)", action = "destroy" }      # 금 21:05 클러스터 삭제
-    nat-off-late = { cron = "cron(5 23 * * ? *)", action = "nat-off" }        # 매일 23:05 NAT가 남아 있으면 삭제
-  }
+  # 2026-11-23 dev 끔: 켜기·끄기·노드 일정은 만들지 않는다. safety_stop_cron(기본 매일 23:00)만 남긴다
+  start_cron             = null
+  stop_cron              = null
+  nodes_up_cron          = null
+  nodes_down_cron        = null
+  nodes_safety_down_cron = null
 }
 
 module "cluster_actions" {
